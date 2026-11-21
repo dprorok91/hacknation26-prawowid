@@ -1,5 +1,7 @@
 """Bare endpoints: intentionally no fake analysis, no database side effects."""
+
 from fastapi import APIRouter, HTTPException
+
 from prawdowid.api.schemas import AnalysisRequest, AnalysisResponse
 
 router = APIRouter(prefix="/api/v1")

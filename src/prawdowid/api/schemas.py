@@ -1,4 +1,5 @@
 """Public Pydantic contracts: five MSZ verdicts are separate from infrastructure errors."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,9 +20,11 @@ class AnalysisRequest(BaseModel):
     language: Literal["pl"] = "pl"
 
     @model_validator(mode="after")
-    def minimally_validate_format(self) -> "AnalysisRequest":
+    def minimally_validate_format(self) -> AnalysisRequest:
         # Security-sensitive URL checks/SSRF are NOT implemented yet; see task P0-05.
-        if self.kind == InputKind.URL and not self.content.strip().startswith(("https://", "http://")):
+        if self.kind == InputKind.URL and not self.content.strip().startswith(
+            ("https://", "http://")
+        ):
             raise ValueError("URL input must begin with https:// or http://")
         return self
 

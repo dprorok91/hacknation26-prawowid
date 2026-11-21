@@ -1,0 +1,6 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 5
+interrupt_message = true
+
+# Keep all edits inside the parent/main agent. Subagents analyze and return summaries.

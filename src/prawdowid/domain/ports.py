@@ -1,7 +1,9 @@
 """Protocols define boundaries; implementation belongs in infrastructure/adapters."""
+
 from __future__ import annotations
 
-from typing import Any, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 from prawdowid.domain.models import Claim, DocumentCandidate, EventQuery, EvidencePassage
 
@@ -44,7 +46,9 @@ class ClaimExtractor(Protocol):
 
 
 class EvidenceRetriever(Protocol):
-    async def retrieve(self, event: EventQuery, claims: Sequence[Claim]) -> dict[str, list[EvidencePassage]]: ...
+    async def retrieve(
+        self, event: EventQuery, claims: Sequence[Claim]
+    ) -> dict[str, list[EvidencePassage]]: ...
 
 
 class ClaimVerifier(Protocol):
@@ -52,7 +56,9 @@ class ClaimVerifier(Protocol):
 
 
 class NarrativeComparer(Protocol):
-    async def compare(self, event: EventQuery, passages: Sequence[EvidencePassage]) -> list[dict[str, Any]]: ...
+    async def compare(
+        self, event: EventQuery, passages: Sequence[EvidencePassage]
+    ) -> list[dict[str, Any]]: ...
 
 
 class StructuredLLM(Protocol):

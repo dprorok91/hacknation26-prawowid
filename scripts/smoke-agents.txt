@@ -1,0 +1,16 @@
+Use the native subagent tools for this read-only smoke test. Spawn each role
+with its name in agent_type and set fork_turns to "none". Put all needed
+context in the child message. Do not run shell commands or edit files.
+
+1. Spawn requirements_researcher to analyze a safe backend and database
+   readiness endpoint. Ask for facts, assumptions, unknowns, acceptance
+   criteria, and external dependencies. Wait for the response.
+2. Spawn solution_architect and pass it the requirements response. Ask
+   for a single HTTP contract with status codes, schemas, and error behavior.
+   Wait for the response.
+3. Spawn quality_reviewer and pass it both outputs. Ask for missing tests,
+   failure modes, security issues, and concurrency concerns. Wait for the
+   response.
+
+Summarize the three responses under their role names. Report any tooling
+failure explicitly. Complete the smoke only after all three roles return.

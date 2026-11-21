@@ -1,8 +1,8 @@
 # Skills and coding workflow (verified repo references)
 
 ## Sources requested
-1. https://github.com/github/spec-kit — specifications, constitution, plan, tasks, convergence. Install CLI: `uv tool install specify-cli`; in existing project root, **review existing .specify contents before initializing**, then `specify init --here --integration codex` (do not overwrite files without checking). Commands are invoked in Codex, not pasted into shell.
-2. https://github.com/wshobson/agents — choose limited relevant skills rather than installing all agents: `backend-development` (`api-design-principles`, `architecture-patterns`); `llm-application-dev` (`rag-implementation`, `llm-evaluation`, `hybrid-search-implementation`); `security-scanning` (`stride-analysis-patterns`); `python-development` (`python-testing-patterns`); `developer-essentials` (`code-review-excellence`). Their Codex install route in README: `codex plugin marketplace add wshobson/agents` then `codex plugin add backend-development@claude-code-workflows` (and individually relevant plugins). Verify Codex plugin CLI version.
+1. GitHub Spec Kit provides the specification, planning, tasks, and verification workflow. Invoke `$speckit-*` in Codex. [Development workflow](DEVELOPMENT_WORKFLOW.md) · [GitHub Spec Kit](https://github.com/github/spec-kit)
+2. The installed native wshobson plugins cover backend architecture, API design, security, Python, JavaScript, debugging, and testing. Consult the upstream RAG and LLM evaluation skills as references when working on retrieval. [Installation manifest](INSTALLATION_MANIFEST.md) · [wshobson/agents](https://github.com/wshobson/agents)
 3. https://github.com/GoogleChrome/modern-web-guidance/blob/main/skills/chrome-extensions/SKILL.md — Chrome Manifest V3, `contextMenus` selection text, `activeTab`, side panel trigger, CSP and minimum permissions. Fetch and read the original skill + `references/extensions/{context-menus,permissions,side-panel}.md` before implementation. Do not copy broad `<all_urls>` permission by default.
 
 ## Application
