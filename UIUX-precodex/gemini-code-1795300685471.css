@@ -1,0 +1,34 @@
+.veriframe-hl {
+  border-bottom-width: 2px;
+  border-bottom-style: solid;
+  padding-bottom: 1px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.veriframe-hl-TRUE { border-bottom-color: rgba(5, 150, 105, 0.55); }
+.veriframe-hl-TRUE:hover, .veriframe-hl-TRUE.veriframe-active {
+  border-bottom-color: rgba(4, 120, 87, 0.95);
+  background-color: rgba(5, 150, 105, 0.12);
+}
+
+.veriframe-hl-MOSTLY_TRUE { border-bottom-color: rgba(132, 204, 22, 0.6); }
+.veriframe-hl-MOSTLY_TRUE:hover, .veriframe-hl-MOSTLY_TRUE.veriframe-active {
+  border-bottom-color: rgba(101, 163, 13, 0.95);
+  background-color: rgba(132, 204, 22, 0.14);
+}
+
+.veriframe-hl-MOSTLY_FALSE { border-bottom-color: rgba(245, 158, 11, 0.55); }
+.veriframe-hl-MOSTLY_FALSE:hover, .veriframe-hl-MOSTLY_FALSE.veriframe-active {
+  border-bottom-color: rgba(217, 119, 6, 0.95);
+  background-color: rgba(245, 158, 11, 0.13);
+}
+
+.veriframe-hl-FALSE { border-bottom-color: rgba(244, 63, 94, 0.55); }
+.veriframe-hl-FALSE:hover, .veriframe-hl-FALSE.veriframe-active {
+  border-bottom-color: rgba(225, 29, 72, 0.95);
+  background-color: rgba(244, 63, 94, 0.12);
+}
+
+.veriframe-hl-UNVERIFIED { border-bottom-color: rgba(113, 113, 122, 0.45); }

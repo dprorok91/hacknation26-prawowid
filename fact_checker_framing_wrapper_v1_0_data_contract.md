@@ -1,20 +1,31 @@
 # Fact-Checker & Framing Wrapper: v1.0 Data Contract
 
-**Version:** 1.0 (MVP)  
-**Target Architecture:** OpenRouter Structured Outputs (`json_schema` strict mode)  
-**Purpose:** Defines the typed JSON contract between the live retrieval/LLM pipeline and the frontend application.
+**Version:** 1.0 (Decoupled Architecture)
+
+**Target Architecture:** OpenRouter Structured Outputs (`json_schema` strict mode)
+
+**Purpose:** Defines the typed JSON contract between the live retrieval/LLM pipeline and the frontend application, separating objective fact-checking (`claims`) from outlet-level media framing (`framing`).
 
 ---
 
-## 1. Agreed Architectural Decisions
+## 1. Core Architectural Principle: Separation of Concerns
 
-1. **Dual Input Support:** The backend accepts either a **single short claim** (e.g., a tweet or quote) or a **full web article/URL** (decomposed into multiple claims). In both cases, the output uses the exact same schema—a single tweet simply produces a `claims` array of length `1`.
-2. **Controversy Flag Removed:** Dropped completely to keep the model focused on verifiable truth and concrete framing techniques rather than subjective controversy scoring.
-3. **Top-Level Verdicts for Both Factuality & Framing:** The root object provides an overarching `verdict` for both objective accuracy and overall media framing, alongside concise natural-language takeaways explaining *what* held up and *what* was spun.
-4. **Claim Centrality / Salience (`salience_score`):** Rather than overloading the user with 50 trivial statements from a long article, the LLM extracts only key claims and assigns a `salience_score` (`0.0` to `1.0`) plus a `centrality` tier (`CORE` vs. `SUPPORTING`). This lets the frontend show the top 3–4 core claims by default and collapse minor ones. *(Note: Named `salience_score` rather than `sentiment_score` so the LLM scores narrative importance rather than emotional positivity/negativity).*
-5. **1-Sentence Response Limit:** Each claim's `response` is strictly capped at **one clear sentence** with inline `[1]` citation markers mapped to a structured `sources` list.
-6. **Strict Enum Taxonomies ($\le$ 5 Categories):** Both claim truth scores and framing labels are locked to 5-value enums (including `UNVERIFIED` / `INSUFFICIENT_DATA`) to prevent hallucinated verdicts.
-7. **Delivery Mode (Batch Now, Stream-Ready Later):** Keys are ordered top-down (`overall_verdict` $\rightarrow$ `overall_framing` $\rightarrow$ `claims`) so the frontend can ingest full `.json` files today and transition to partial JSON streaming later without changing the data model.
+1. **`claims` = Objective Fact-Checker Domain:**
+   * Evaluates verifiable statements extracted from the input (`SINGLE_CLAIM` or `ARTICLE`) against primary evidence.
+   * Contains **zero** media-framing or outlet-spin metadata.
+   * Scored by `salience_score` (`0.0` to `1.0`) and `centrality` (`CORE` vs. `SUPPORTING`) so the UI surfaces only the most critical facts first.
+   * Each claim's `response` is capped at **one clear sentence** with `[1]` citation markers mapped to `sources[]`.
+
+2. **`framing` = Outlet-Level Narrative Domain:**
+   * Lives strictly at the **top level** alongside `claims`—never nested inside or coupled to individual `claim_id`s.
+   * Evaluates how news outlets package, emphasize, or distort the **story/topic as a whole** through their headlines and editorial framing.
+
+3. **Top-Level Macro Verdicts:**
+   * `overall_verdict` summarizes the factual accuracy of the input.
+   * `framing.verdict` summarizes the cross-outlet media framing landscape.
+
+4. **Strict Enum Taxonomies ($\le$ 5 Categories):**
+   * Both factuality scores and framing labels are locked to 5-value enums (including `UNVERIFIED` / `INSUFFICIENT_DATA`) to prevent hallucinated verdicts.
 
 ---
 
@@ -27,7 +38,7 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "FactCheckAndFramingPayload",
   "type": "object",
-  "required": ["meta", "overall_verdict", "overall_framing", "claims"],
+  "required": ["meta", "overall_verdict", "claims", "framing"],
   "additionalProperties": false,
   "properties": {
     "meta": {
@@ -61,28 +72,13 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
         },
         "summary": {
           "type": "string",
-          "description": "1-2 sentences explaining the macro verdict (e.g., what parts are accurate vs. where the claim breaks down)."
-        }
-      }
-    },
-    "overall_framing": {
-      "type": "object",
-      "required": ["verdict", "summary"],
-      "additionalProperties": false,
-      "properties": {
-        "verdict": {
-          "type": "string",
-          "enum": ["BALANCED", "SELECTIVE", "SENSATIONALIZED", "MISLEADING_FRAMING", "INSUFFICIENT_DATA"]
-        },
-        "summary": {
-          "type": "string",
-          "description": "1-2 sentences explaining how coverage frames the story (e.g., which angle is emphasized or omitted)."
+          "description": "1-2 sentences explaining the overall factual verdict (what holds up vs. what breaks down)."
         }
       }
     },
     "claims": {
       "type": "array",
-      "description": "Ordered descending by salience_score so the most critical claims appear first.",
+      "description": "Purely factual verification items, ordered descending by salience_score.",
       "items": {
         "type": "object",
         "required": [
@@ -92,14 +88,13 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
           "centrality",
           "score",
           "response",
-          "sources",
-          "framing"
+          "sources"
         ],
         "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique identifier, e.g., 'c1', 'c2'."
+            "description": "Unique identifier, e.g., 'claim-1', 'claim-2'."
           },
           "text": {
             "type": "string",
@@ -109,12 +104,12 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
             "type": "number",
             "minimum": 0.0,
             "maximum": 1.0,
-            "description": "Importance of this claim to the core thesis of the input (1.0 = central thesis, 0.1 = minor tangential detail)."
+            "description": "Importance of this claim to the core thesis of the input (1.0 = central thesis, 0.1 = minor detail)."
           },
           "centrality": {
             "type": "string",
             "enum": ["CORE", "SUPPORTING"],
-            "description": "CORE if salience_score >= 0.75 (primary claims to surface immediately); SUPPORTING otherwise."
+            "description": "CORE if salience_score >= 0.75; SUPPORTING otherwise."
           },
           "score": {
             "type": "string",
@@ -145,41 +140,51 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
                 }
               }
             }
-          },
-          "framing": {
+          }
+        }
+      }
+    },
+    "framing": {
+      "type": "object",
+      "description": "Top-level outlet framing analysis across the story/topic as a whole.",
+      "required": ["verdict", "summary", "outlets"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["BALANCED", "NEUTRAL", "SELECTIVE", "SENSATIONALIZED", "INVERTED"]
+        },
+        "summary": {
+          "type": "string",
+          "description": "1-2 sentences explaining how media outlets frame the story overall."
+        },
+        "outlets": {
+          "type": "array",
+          "description": "Outlet-level coverage and headline framing evaluations.",
+          "items": {
             "type": "object",
-            "required": ["verdict", "note", "outlets"],
+            "required": ["source", "headline", "url", "framing_verdict", "framing_note"],
             "additionalProperties": false,
             "properties": {
-              "verdict": {
+              "source": {
                 "type": "string",
-                "enum": ["BALANCED", "SELECTIVE", "SENSATIONALIZED", "MISLEADING_FRAMING", "INSUFFICIENT_DATA"]
+                "description": "News outlet name."
               },
-              "note": {
+              "headline": {
                 "type": "string",
-                "description": "1-sentence explanation of how outlets frame this specific claim."
+                "description": "Actual headline from live search."
               },
-              "outlets": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": ["source", "headline", "framing_tag"],
-                  "additionalProperties": false,
-                  "properties": {
-                    "source": {
-                      "type": "string",
-                      "description": "News outlet name."
-                    },
-                    "headline": {
-                      "type": "string",
-                      "description": "Actual headline or framing snippet from the live search."
-                    },
-                    "framing_tag": {
-                      "type": "string",
-                      "enum": ["BALANCED", "SELECTIVE", "SENSATIONALIZED", "MISLEADING_FRAMING", "INSUFFICIENT_DATA"]
-                    }
-                  }
-                }
+              "url": {
+                "type": "string",
+                "description": "Direct URL to the outlet's article."
+              },
+              "framing_verdict": {
+                "type": "string",
+                "enum": ["BALANCED", "NEUTRAL", "SELECTIVE", "SENSATIONALIZED", "INVERTED"]
+              },
+              "framing_note": {
+                "type": "string",
+                "description": "1-sentence note explaining how this outlet's headline/angle frames the story."
               }
             }
           }
@@ -192,9 +197,10 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
 
 ---
 
-## 3. Enum Definitions & Rubric (For Prompt & UI Consistency)
+## 3. Enum Definitions & Rubric
 
 ### A. Factuality Score (`overall_verdict.score` & `claims[].score`)
+
 | Enum Value | Definition |
 | :--- | :--- |
 | `TRUE` | Accurate and corroborated by reliable primary sources with no material omissions. |
@@ -203,190 +209,216 @@ Share this schema directly with your backend partner to enforce via OpenRouter's
 | `FALSE` | Directly contradicted by verifiable evidence or primary records. |
 | `UNVERIFIED` | Insufficient live data, breaking event, or purely subjective opinion that cannot be fact-checked. |
 
-### B. Framing Verdict (`overall_framing.verdict`, `claims[].framing.verdict`, `outlets[].framing_tag`)
+### B. Outlet Framing Verdict (`framing.verdict` & `framing.outlets[].framing_verdict`)
+
 | Enum Value | Definition |
 | :--- | :--- |
-| `BALANCED` | Presents key facts proportionately without loaded language or major omissions. |
-| `SELECTIVE` | Highlights one true aspect of the story while omitting crucial context or counter-evidence (cherry-picking). |
+| `BALANCED` | Presents key facts proportionately alongside relevant trade-offs or caveats. |
+| `NEUTRAL` | Straightforward, matter-of-fact reporting with minimal editorial slant. |
+| `SELECTIVE` | Highlights one true slice of the story while omitting crucial context or counter-evidence. |
 | `SENSATIONALIZED` | Uses emotionally charged, exaggerated, or alarmist language beyond what the facts warrant. |
-| `MISLEADING_FRAMING` | Presents the facts in a way that implies the opposite of reality or attributes false intent. |
-| `INSUFFICIENT_DATA` | Too few live external headlines found to evaluate cross-outlet framing. |
+| `INVERTED` | Frames the story in a way that implies the opposite of the underlying facts. |
 
 ---
 
-## 4. Mock `.json` Payloads for Immediate UI Development
+## 4. Mock `.json` Payloads
 
-You can use these two mock files immediately to build and test both input modes (a viral tweet vs. a multi-claim news article).
+### Mock A: Single Tweet (`SINGLE_CLAIM`)
 
-### Mock A: Single Tweet / Claim (`SINGLE_CLAIM`)
 ```json
 {
   "meta": {
     "input_type": "SINGLE_CLAIM",
-    "topic_summary": "A viral social media post claiming a new EU regulation bans all private vehicle repairs starting next month.",
-    "total_claims_extracted": 1
+    "topic_summary": "A viral post claiming NASA's James Webb Space Telescope proved a rocky exoplanet 40 light-years away can support liquid oceans.",
+    "total_claims_extracted": 2
   },
   "overall_verdict": {
-    "score": "MOSTLY_FALSE",
-    "summary": "While the EU did adopt new End-of-Life Vehicle rules, they only apply to scrapping unrepairable wrecks and do not ban private owners from repairing their cars."
-  },
-  "overall_framing": {
-    "verdict": "MISLEADING_FRAMING",
-    "summary": "Viral posts and partisan blogs frame routine recycling criteria as a sweeping ban on DIY car ownership, whereas mainstream outlets report it as an industrial waste measure."
+    "score": "MOSTLY_TRUE",
+    "summary": "JWST detected hints of water vapor near rocky exoplanet GJ 486 b, though its 800°F surface temperature makes liquid oceans impossible."
   },
   "claims": [
     {
-      "id": "c1",
-      "text": "The EU has passed a law banning citizens from repairing their own cars starting next month.",
-      "salience_score": 1.0,
+      "id": "claim-1",
+      "text": "NASA's James Webb Space Telescope detected traces of water vapor near a rocky exoplanet roughly 40 light-years away (GJ 486 b).",
+      "salience_score": 0.96,
       "centrality": "CORE",
-      "score": "MOSTLY_FALSE",
-      "response": "The EU End-of-Life Vehicles regulation sets criteria for when commercial yards must scrap severely damaged cars, explicitly exempting private DIY repairs and vintage vehicles [1][2].",
+      "score": "MOSTLY_TRUE",
+      "response": "JWST detected hints of water vapor around rocky exoplanet GJ 486 b (26 light-years away), though astronomers noted the signal could also originate from cool starspots on its host star rather than a planetary atmosphere [1][2].",
       "sources": [
         {
           "id": 1,
-          "name": "European Commission Official Press Release",
-          "url": "https://ec.europa.eu/commission/presscorner/example"
+          "name": "NASA Webb Mission Team",
+          "url": "https://science.nasa.gov/missions/webb/webb-finds-water-vapor-but-from-a-rocky-planet-or-its-star/"
         },
         {
           "id": 2,
-          "name": "Reuters Fact Check",
-          "url": "https://www.reuters.com/fact-check/example"
+          "name": "The Astrophysical Journal Letters",
+          "url": "https://iopscience.iop.org/journal/2041-8205"
         }
-      ],
-      "framing": {
-        "verdict": "MISLEADING_FRAMING",
-        "note": "Aggregator blogs invert the regulation's scope by equating commercial salvage rules with a personal repair ban.",
-        "outlets": [
-          {
-            "source": "EuroAuto Watch",
-            "headline": "Brussels Bureaucrats Outlaw Driveway Car Repairs in Radical Green Push",
-            "framing_tag": "MISLEADING_FRAMING"
-          },
-          {
-            "source": "Reuters",
-            "headline": "EU vehicle recycling rules do not ban owners from fixing their cars",
-            "framing_tag": "BALANCED"
-          },
-          {
-            "source": "Politico Europe",
-            "headline": "Car lobby clashes with Brussels over stricter end-of-life scrapping rules",
-            "framing_tag": "SELECTIVE"
-          }
-        ]
-      }
+      ]
+    },
+    {
+      "id": "claim-2",
+      "text": "The discovery proves the exoplanet can support liquid oceans right now.",
+      "salience_score": 0.91,
+      "centrality": "CORE",
+      "score": "FALSE",
+      "response": "GJ 486 b has an estimated surface temperature of roughly 800 degrees Fahrenheit (430 degrees Celsius), making liquid water oceans physically impossible on its surface [1].",
+      "sources": [
+        {
+          "id": 1,
+          "name": "NASA Webb Mission Team",
+          "url": "https://science.nasa.gov/missions/webb/webb-finds-water-vapor-but-from-a-rocky-planet-or-its-star/"
+        }
+      ]
     }
-  ]
+  ],
+  "framing": {
+    "verdict": "SENSATIONALIZED",
+    "summary": "While science outlets highlighted the ambiguity between planetary atmosphere and starspot interference, viral social posts and tabloid headlines extrapolated water vapor into habitability.",
+    "outlets": [
+      {
+        "source": "Space.com",
+        "headline": "James Webb Space Telescope spots hints of water on scorching rocky exoplanet",
+        "url": "https://www.space.com/james-webb-space-telescope-rocky-exoplanet-water-vapor",
+        "framing_verdict": "BALANCED",
+        "framing_note": "Accurately pairs the water vapor detection with the planet's extreme heat and starspot caveat."
+      },
+      {
+        "source": "Daily Star Science",
+        "headline": "Alien ocean world found by NASA telescope just steps away from Earth",
+        "url": "https://www.dailystar.co.uk/news/weird-news/nasa-webb-ocean-planet-discovery",
+        "framing_verdict": "INVERTED",
+        "framing_note": "Presents an 800°F inhospitable rock as a liquid-ocean world."
+      },
+      {
+        "source": "Reuters Science",
+        "headline": "Webb telescope detects water vapor around rocky planet, or maybe its star",
+        "url": "https://www.reuters.com/lifestyle/science/webb-telescope-detects-water-vapor-2023-05-01/",
+        "framing_verdict": "NEUTRAL",
+        "framing_note": "Directly reflects the dual hypothesis stated in the peer-reviewed study."
+      }
+    ]
+  }
 }
 ```
 
-### Mock B: Multi-Claim Web Article (`ARTICLE`)
+### Mock B: Multi-Claim Article (`ARTICLE`)
+
 ```json
 {
   "meta": {
     "input_type": "ARTICLE",
-    "topic_summary": "Article reporting on a 15% municipal transit fare hike and claiming ridership has collapsed due to safety concerns.",
-    "total_claims_extracted": 3
+    "topic_summary": "Policy analysis examining traffic, commuter demographics, retail spending, and air-quality effects after downtown congestion pricing launches.",
+    "total_claims_extracted": 34
   },
   "overall_verdict": {
     "score": "MOSTLY_TRUE",
-    "summary": "The fare increase figures and budget deficit numbers are accurate, but the claim that ridership collapsed due to crime omits post-pandemic remote work trends."
-  },
-  "overall_framing": {
-    "verdict": "SELECTIVE",
-    "summary": "Coverage focuses heavily on fare hikes and isolated crime incidents while omitting that new low-income subsidies keep prices unchanged for 40% of riders."
+    "summary": "Downtown traffic reductions and transit commuter ratios are verified by municipal audits, while claims of retail collapse and total pollution elimination are unsupported."
   },
   "claims": [
     {
-      "id": "c1",
-      "text": "Metro transit fares will increase by 15% starting January 1 to close a $120M budget shortfall.",
-      "salience_score": 0.95,
+      "id": "claim-1",
+      "text": "Downtown congestion pricing zones in cities like London, Stockholm, and New York reduced central business district vehicle traffic by 10% to 20% within the first year.",
+      "salience_score": 0.97,
       "centrality": "CORE",
       "score": "TRUE",
-      "response": "Board minutes confirm a 15% base fare hike taking effect January 1 to address a verified $120 million operating deficit [1].",
+      "response": "Municipal transport audits in Stockholm, London, and early Manhattan tolling data confirm sustained central-zone traffic reductions between 12% and 20% following launch [1][2].",
       "sources": [
         {
           "id": 1,
-          "name": "Metropolitan Transit Authority Budget Report",
-          "url": "https://mta.example.gov/budget-2026"
+          "name": "Metropolitan Transportation Authority (MTA) Traffic Data",
+          "url": "https://new.mta.info/project/CBDTP"
+        },
+        {
+          "id": 2,
+          "name": "Transport for London (TfL) Congestion Charge Evaluation",
+          "url": "https://tfl.gov.uk/modes/driving/congestion-charge"
         }
-      ],
-      "framing": {
-        "verdict": "SELECTIVE",
-        "note": "Most headlines lead with the 15% hike while omitting that discounted passes for low-income riders remain frozen.",
-        "outlets": [
-          {
-            "source": "City Daily Herald",
-            "headline": "Commuters Hit With Steep 15% Transit Tax Hike Ahead of New Year",
-            "framing_tag": "SENSATIONALIZED"
-          },
-          {
-            "source": "Metro Public Radio",
-            "headline": "Transit Board Approves 15% Base Fare Hike, Freezes Low-Income Pass Rates",
-            "framing_tag": "BALANCED"
-          }
-        ]
-      }
+      ]
     },
     {
-      "id": "c2",
-      "text": "Ridership dropped 30% over the past two years primarily because commuters feel unsafe.",
-      "salience_score": 0.85,
+      "id": "claim-2",
+      "text": "Over 85% of outer-borough and suburban commuters traveling into Manhattan's central business district commute by public transit rather than private car.",
+      "salience_score": 0.93,
+      "centrality": "CORE",
+      "score": "TRUE",
+      "response": "U.S. Census Bureau and Tri-State Transportation Campaign analyses show roughly 85% to 88% of outer-borough workers commuting into Manhattan's core use subway, bus, or commuter rail, while under 2% of low-income outer-borough residents drive into the zone [3].",
+      "sources": [
+        {
+          "id": 3,
+          "name": "Community Service Society / U.S. Census Commuter Analysis",
+          "url": "https://www.cssny.org/news/entry/congestion-pricing-outer-borough-workers"
+        }
+      ]
+    },
+    {
+      "id": "claim-3",
+      "text": "Retail foot traffic and restaurant spending inside congestion zones collapsed by 30% due to drivers avoiding downtown businesses.",
+      "salience_score": 0.90,
+      "centrality": "CORE",
+      "score": "FALSE",
+      "response": "Credit card transaction logs and pedestrian counter data in Stockholm, London, and Manhattan showed stable or slightly higher downtown retail foot traffic after toll implementation, though specific auto-dependent businesses saw localized dips [1][4].",
+      "sources": [
+        {
+          "id": 1,
+          "name": "MTA Central Business District Economic Tracker",
+          "url": "https://new.mta.info/project/CBDTP"
+        },
+        {
+          "id": 4,
+          "name": "Regional Plan Association (RPA) Retail Study",
+          "url": "https://rpa.org/work/reports/congestion-pricing-economic-impacts"
+        }
+      ]
+    },
+    {
+      "id": "claim-4",
+      "text": "Congestion pricing permanently eliminated particulate air pollution across surrounding residential neighborhoods.",
+      "salience_score": 0.84,
       "centrality": "CORE",
       "score": "MOSTLY_FALSE",
-      "response": "While ridership remains 30% below pre-2020 baselines, transit surveys attribute over 75% of that drop to hybrid remote work rather than crime [2].",
+      "response": "While central-zone nitrogen dioxide and tailpipe emissions declined measurably, studies found mixed air-quality outcomes along peripheral highway corridors where rerouted truck traffic increased [2][5].",
       "sources": [
         {
           "id": 2,
-          "name": "Urban Mobility Institute Annual Survey",
-          "url": "https://urbanmobility.example.org/survey"
-        }
-      ],
-      "framing": {
-        "verdict": "MISLEADING_FRAMING",
-        "note": "Opinion-heavy outlets link overall ridership decline exclusively to crime statistics.",
-        "outlets": [
-          {
-            "source": "The Evening Chronicle",
-            "headline": "Lawless Subways Drive 30% of Riders Away From Public Transit",
-            "framing_tag": "MISLEADING_FRAMING"
-          },
-          {
-            "source": "Civic Data Journal",
-            "headline": "Remote Work Keeps Transit Ridership 30% Below Pre-Pandemic Levels",
-            "framing_tag": "BALANCED"
-          }
-        ]
-      }
-    },
-    {
-      "id": "c3",
-      "text": "The transit board meeting lasted over four hours before the final vote.",
-      "salience_score": 0.2,
-      "centrality": "SUPPORTING",
-      "score": "TRUE",
-      "response": "Official livestream timestamps confirm the public hearing ran for four hours and twelve minutes [1].",
-      "sources": [
+          "name": "Transport for London Air Quality Monitoring",
+          "url": "https://tfl.gov.uk/modes/driving/congestion-charge"
+        },
         {
-          "id": 1,
-          "name": "Metropolitan Transit Authority Budget Report",
-          "url": "https://mta.example.gov/budget-2026"
+          "id": 5,
+          "name": "Environmental Defense Fund Urban Air Study",
+          "url": "https://www.edf.org/airquality"
         }
-      ],
-      "framing": {
-        "verdict": "INSUFFICIENT_DATA",
-        "note": "Procedural detail not covered in external headlines.",
-        "outlets": []
-      }
+      ]
     }
-  ]
+  ],
+  "framing": {
+    "verdict": "SELECTIVE",
+    "summary": "News outlets rely on accurate underlying metrics but select sharply different slices of the story—pro-transit outlets emphasize aggregate commuter percentages and bus speeds, while anti-toll outlets spotlight peripheral truck rerouting and edge-case driver costs.",
+    "outlets": [
+      {
+        "source": "The New York Times",
+        "headline": "Subway riders see faster buses and cleaner streets in early congestion pricing data",
+        "url": "https://www.nytimes.com/2025/02/10/nyregion/congestion-pricing-traffic-transit.html",
+        "framing_verdict": "SELECTIVE",
+        "framing_note": "Centers the 85% transit commuter majority while giving minimal space to shift workers lacking rail access."
+      },
+      {
+        "source": "New York Post",
+        "headline": "Midtown diners and small shops slam congestion toll as working drivers get crushed",
+        "url": "https://nypost.com/2025/02/12/metro/midtown-businesses-slam-congestion-toll/",
+        "framing_verdict": "SENSATIONALIZED",
+        "framing_note": "Uses anecdotal merchant quotes to imply broad economic collapse contradicted by aggregate card data."
+      },
+      {
+        "source": "Gothamist",
+        "headline": "Manhattan traffic drops 15%, but Bronx advocates warn of highway truck spillover",
+        "url": "https://gothamist.com/news/manhattan-traffic-drops-bronx-highway-spillover",
+        "framing_verdict": "BALANCED",
+        "framing_note": "Pairs core traffic reductions with verified peripheral air-quality trade-offs."
+      }
+    ]
+  }
 }
 ```
-
----
-
-## 5. Implementation Notes for Your Backend Partner
-
-* **Prompt Instruction for Claim Filtering:** Instruct the LLM: *"Extract at most 8 claims from articles (1 for single tweets). Prioritize claims central to the headline and thesis (`salience_score` $\ge$ 0.75). Ignore trivial background details unless they directly affect factual accuracy."*
-* **Strict 1-Sentence Enforcement:** In the system prompt, specify that `claims[].response` must be a single grammatical sentence under 35 words ending with citation brackets (e.g., `[1]`).
-* **Future Streaming Readiness:** Because `meta`, `overall_verdict`, and `overall_framing` appear at the top of the JSON object and `claims` are sorted descending by `salience_score`, switching to streamed JSON later will automatically render the verdicts and highest-importance claims first.
