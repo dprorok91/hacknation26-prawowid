@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f5f3ec">
+  <title>PRAWDOWID</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#tresc">Przejdź do treści</a>
+  <header class="site-header">
+    <a class="wordmark" href="/" translate="no">PRAWDOWID</a>
+  </header>
+  <main id="tresc" tabindex="-1">
+    <div class="workspace">
+      <section class="intro" aria-labelledby="tytul">
+        <h1 id="tytul">Sprawdź, co potwierdzają źródła</h1>
+        <p>Wklej fragment tekstu lub adres artykułu. Raport pokaże ocenę twierdzeń, cytaty i różnice w relacjach źródeł.</p>
+      </section>
+      <form id="analysis-form" class="entry">
+        <fieldset>
+          <legend>Co chcesz sprawdzić?</legend>
+          <div class="choices">
+            <label class="choice">
+              <input type="radio" name="kind" value="text" checked>
+              <span>Fragment tekstu</span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="kind" value="url">
+              <span>Adres artykułu</span>
+            </label>
+          </div>
+        </fieldset>
+        <div id="field-text" class="field">
+          <label for="content-text">Fragment do analizy</label>
+          <textarea id="content-text" name="text" rows="5" maxlength="20000" required
+                    autocomplete="off" aria-describedby="field-error" placeholder="Wklej fragment tekstu…"></textarea>
+        </div>
+        <div id="field-url" class="field" hidden>
+          <label for="content-url">Adres artykułu</label>
+          <input id="content-url" name="url" type="url" inputmode="url" maxlength="20000"
+                 autocomplete="off" autocapitalize="none" spellcheck="false" required disabled
+                 aria-describedby="field-error" placeholder="https://przyklad.pl/artykul…">
+        </div>
+        <p id="field-error" class="feedback error" aria-live="polite"></p>
+        <button id="submit-analysis" type="submit">Sprawdź źródła</button>
+      </form>
+    </div>
+    <p id="analysis-status" class="feedback status" role="status"></p>
+    <button type="button" id="delete-analysis" class="secondary delete-action" hidden>Usuń analizę</button>
+    <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+      <h2 id="delete-title">Usunąć analizę?</h2>
+      <p id="delete-description">Raport przestanie być dostępny po usunięciu.</p>
+      <form method="dialog" class="actions">
+        <button type="submit" value="cancel" class="secondary" autofocus>Anuluj</button>
+        <button type="submit" value="delete" class="danger">Usuń analizę</button>
+      </form>
+    </dialog>
+    <section id="report" class="report" aria-labelledby="report-title" hidden>
+      <div class="report-header">
+        <h2 id="report-title" tabindex="-1">Wynik analizy</h2>
+        <div id="report-actions" class="actions" hidden>
+          <button type="button" id="share-report" class="secondary">Utwórz link do raportu</button>
+          <a id="public-link" hidden>Otwórz publiczny raport</a>
+        </div>
+      </div>
+      <div id="report-content"></div>
+    </section>
+  </main>
+</body>
+</html>

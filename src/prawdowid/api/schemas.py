@@ -6,7 +6,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from prawdowid.application.analyses import ErrorCode
+from prawdowid.domain.urls import parse_http_url
 
 
 class InputKind(str, Enum):
@@ -15,18 +18,40 @@ class InputKind(str, Enum):
 
 
 class AnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     kind: InputKind
-    content: str = Field(min_length=1, max_length=20000)
+    content: str = Field(min_length=1, max_length=20000, strict=True)
     language: Literal["pl"] = "pl"
 
     @model_validator(mode="after")
     def minimally_validate_format(self) -> AnalysisRequest:
-        # Security-sensitive URL checks/SSRF are NOT implemented yet; see task P0-05.
-        if self.kind == InputKind.URL and not self.content.strip().startswith(
-            ("https://", "http://")
-        ):
-            raise ValueError("URL input must begin with https:// or http://")
+        self.content = self.content.strip()
+        if not self.content:
+            raise ValueError("content is required")
+        if self.kind == InputKind.URL:
+            parse_http_url(self.content)
         return self
+
+
+class ErrorDetail(BaseModel):
+    error_code: ErrorCode
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    detail: ErrorDetail
+
+
+class AuditResponse(BaseModel):
+    at: datetime
+    event_type: str
+    model_name: str | None
+    latency_ms: int | None
+    tokens_in: int | None
+    tokens_out: int | None
+    estimated_cost_usd: float | None
+    source_ids: list[str]
+    error_code: str | None
 
 
 class Verdict(str, Enum):

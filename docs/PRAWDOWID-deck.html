@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRAWDOWID — prezentacja projektu</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f5f3ec;
+    --white: #fffefa;
+    --ink: #122834;
+    --dark: #153749;
+    --muted: #415660;
+    --line: #b7c2bc;
+    --mint: #bde0ce;
+    --mint-ink: #214d39;
+    --accent: #aa3e30;
+    --pad: clamp(1.1rem, min(5vw, 8vh), 5rem);
+    --gap: clamp(.55rem, min(2vw, 2.6vh), 1.6rem);
+    --title: clamp(2rem, min(6.4vw, 11vh), 6.25rem);
+    --heading: clamp(1.65rem, min(4.9vw, 8.1vh), 4.5rem);
+    --body: clamp(.92rem, min(1.72vw, 3.35vh), 1.5rem);
+    --small: clamp(.8rem, min(1.15vw, 2.5vh), 1.08rem);
+    font-family: system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow-x: hidden; }
+  html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+  .slide {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    scroll-snap-align: start;
+    padding: var(--pad);
+  }
+  .slide-content {
+    display: grid;
+    align-content: center;
+    gap: var(--gap);
+    width: min(100%, 75rem);
+    margin: auto;
+  }
+  .light { background: var(--white); }
+  .dark { background: var(--dark); color: var(--white); }
+  h1, h2, h3, p { margin: 0; }
+  h1, h2 {
+    font-family: Georgia, serif;
+    font-weight: 500;
+    line-height: 1.03;
+    letter-spacing: -.045em;
+    text-wrap: balance;
+  }
+  h1 { font-size: var(--title); }
+  h2 { font-size: var(--heading); max-width: 19ch; }
+  h3 { font-size: var(--body); line-height: 1.25; }
+  p, li { font-size: var(--body); line-height: 1.42; }
+  .lead { max-width: 47ch; font-size: clamp(1rem, min(2.5vw, 4.6vh), 2rem); }
+  .note { font-size: var(--small); color: var(--muted); max-width: 64ch; }
+  .dark .note { color: #cfe0e7; }
+  .split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, .92fr);
+    column-gap: clamp(1rem, 5vw, 5rem);
+    align-items: center;
+  }
+  .cluster { display: grid; gap: var(--gap); align-content: center; }
+  .topline { width: 100%; border-top: 1px solid var(--line); padding-top: var(--gap); }
+  .cells {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+    gap: var(--gap);
+  }
+  .cells li { border-top: 2px solid var(--ink); padding-top: calc(var(--gap) * .75); }
+  .cells p { font-size: var(--small); margin-top: .35em; }
+  .cells-dark li { border-color: #94b6bb; }
+  .flow-arrow { color: var(--mint); font-size: var(--body); padding-inline: .2em; }
+  .art {
+    aspect-ratio: 1.22;
+    width: min(100%, 27rem);
+    max-height: 55vh;
+    position: relative;
+    margin-inline: auto;
+  }
+  .art span {
+    display: block;
+    position: absolute;
+    border: clamp(1px, .2vw, 3px) solid var(--mint);
+    width: 75%;
+    height: 62%;
+    bottom: calc(16% + var(--n) * 10%);
+    left: calc(8% + var(--n) * 10%);
+    transform: rotate(calc(var(--n) * -4deg));
+  }
+  .art span:last-child {
+    background:
+      linear-gradient(90deg, transparent 0 17%, #153749 17% 83%, transparent 83%) center 28% / 100% 2px no-repeat,
+      linear-gradient(90deg, transparent 0 17%, #153749 17% 71%, transparent 71%) center 44% / 100% 2px no-repeat,
+      linear-gradient(90deg, transparent 0 17%, #153749 17% 78%, transparent 78%) center 60% / 100% 2px no-repeat,
+      var(--mint);
+  }
+  .metric {
+    display: block;
+    font: 500 clamp(3.5rem, min(13vw, 24vh), 11rem)/.86 Georgia, serif;
+    color: var(--mint-ink);
+    letter-spacing: -.075em;
+  }
+  .breakdown { margin: 0; display: grid; gap: calc(var(--gap) * .8); }
+  .breakdown div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    border-top: 1px solid var(--line);
+    padding-block-start: calc(var(--gap) * .5);
+    font-size: var(--body);
+  }
+  dt, dd { margin: 0; }
+  dd { font-weight: 750; font-variant-numeric: tabular-nums; }
+  .meter { display: flex; height: clamp(.6rem, 1.7vh, 1.4rem); }
+  .meter span:nth-child(1) { flex: 80; background: var(--dark); }
+  .meter span:nth-child(2) { flex: 20; background: var(--mint-ink); }
+  .meter span:nth-child(3) { flex: 12; background: var(--accent); }
+  .outcomes {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0;
+    margin: 0;
+    gap: .45em;
+    list-style: none;
+  }
+  .outcomes li {
+    font-size: var(--small);
+    line-height: 1.3;
+    border: 1px solid var(--line);
+    padding: .35em .55em;
+    border-radius: .2em;
+  }
+  .wide { max-width: 27ch; }
+  .status { color: var(--accent); font-weight: 750; }
+  .presentation-nav {
+    position: fixed;
+    bottom: .65rem;
+    right: .75rem;
+    z-index: 1;
+    display: flex;
+    gap: .4rem;
+    align-items: center;
+    background: var(--white);
+    color: var(--ink);
+    padding: .27rem;
+    border: 1px solid var(--line);
+    border-radius: .4rem;
+    font-size: .9rem;
+  }
+  .presentation-nav button {
+    min-width: 2.35rem;
+    min-height: 2.35rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: inherit;
+    border-radius: .2rem;
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.25rem;
+    touch-action: manipulation;
+  }
+  .presentation-nav button:hover { background: var(--mint); }
+  .presentation-nav button:disabled { opacity: .35; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #slide-count { min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 600px) {
+    .split, .cells { grid-template-columns: 1fr; }
+    .cells { gap: calc(var(--gap) * .7); }
+    .cells li { padding-top: calc(var(--gap) * .45); }
+    .art { width: min(70%, 14rem); }
+  }
+  @media (max-height: 480px) {
+    .art { max-height: 42vh; }
+    .presentation-nav { right: .4rem; bottom: .4rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+  @page { size: 14in 7.875in; margin: 0; }
+  @media print {
+    html, body { height: auto; overflow: visible; scroll-snap-type: none; }
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .slide { width: 14in; height: 7.875in; break-after: page; }
+    .slide:last-child { break-after: auto; }
+    .presentation-nav { display: none; }
+  }
+</style>
+</head>
+<body>
+<main aria-label="PRAWDOWID — prezentacja projektu">
+  <section class="slide dark" aria-labelledby="title">
+    <div class="slide-content split">
+      <div class="cluster">
+        <h1 id="title">PRAWDOWID</h1>
+        <p class="lead">Sprawdź, co potwierdzają źródła i jak różnią się relacje o tym samym wydarzeniu.</p>
+      </div>
+      <div class="art" aria-hidden="true">
+        <span style="--n:0"></span><span style="--n:1"></span><span style="--n:2"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide light" aria-labelledby="usage">
+    <div class="slide-content">
+      <h2 id="usage">Od pytania do sprawdzalnej odpowiedzi</h2>
+      <ol class="cells">
+        <li><h3>Wklej tekst lub adres artykułu</h3><p>Formularz WWW i adapter demonstracyjny korzystają z tego samego API.</p></li>
+        <li><h3>Sprawdź ocenę twierdzeń</h3><p>Raport oddziela wyniki analizy od problemów technicznych.</p></li>
+        <li><h3>Otwórz publikację</h3><p>Źródło ma adres, wydawcę, daty i przytoczony fragment, jeśli jest dostępny.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="slide dark" aria-labelledby="architecture">
+    <div class="slide-content">
+      <h2 id="architecture">Jedno API, osobny proces analizy</h2>
+      <ol class="cells cells-dark" style="--cols:4">
+        <li><h3>FastAPI <span class="flow-arrow" aria-hidden="true">→</span></h3><p>Sprawdza dane i zwraca identyfikator analizy.</p></li>
+        <li><h3>PostgreSQL 16 <span class="flow-arrow" aria-hidden="true">→</span></h3><p>Utrwala kolejkę, wersje treści i wyniki.</p></li>
+        <li><h3>Worker <span class="flow-arrow" aria-hidden="true">→</span></h3><p>Pobiera źródła, wyszukuje tekst i wektory w pgvector oraz korzysta z lokalnego serwera Ollama.</p></li>
+        <li><h3>Raport</h3><p>Udostępnia wyniki przez API ze wskazaniem fragmentów źródeł.</p></li>
+      </ol>
+      <p class="note">Jedna baza kodu. Operacje sieciowe przebiegają poza transakcjami kolejki.</p>
+    </div>
+  </section>
+
+  <section class="slide" aria-labelledby="evidence">
+    <div class="slide-content split">
+      <h2 id="evidence">Ocena wskazuje konkretny fragment</h2>
+      <div class="cluster">
+        <p>Zanim cytat trafi do raportu, aplikacja sprawdza, czy występuje dosłownie we wskazanym fragmencie.</p>
+        <p class="note">Sprzeczne relacje lub brak wystarczających dowodów prowadzą do wstrzymania rozstrzygnięcia. Porównanie relacji pokazuje różnice w akcentach.</p>
+        <ul class="outcomes">
+          <li>Potwierdzone</li><li>Fałszywe</li><li>Mylące</li><li>Za mało dowodów</li><li>Nie da się zweryfikować</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide light" aria-labelledby="catalog">
+    <div class="slide-content split">
+      <div class="cluster">
+        <h2 id="catalog"><span class="metric">112</span>publicznych rekordów</h2>
+        <p>10 domen. Trzy typy źródeł.</p>
+        <p class="note">Katalog zawiera metadane. Zapis tekstu do cytowania wymaga zatwierdzenia polityki wydawcy.</p>
+      </div>
+      <div class="cluster">
+        <div class="meter" aria-hidden="true"><span></span><span></span><span></span></div>
+        <dl class="breakdown">
+          <div><dt>Materiały pierwotne</dt><dd>80</dd></div>
+          <div><dt>Informacje prasowe</dt><dd>20</dd></div>
+          <div><dt>Weryfikacje twierdzeń</dt><dd>12</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" aria-labelledby="privacy">
+    <div class="slide-content">
+      <h2 id="privacy">Ochrona danych i zakres dostępu</h2>
+      <ul class="cells">
+        <li><h3>Bezpieczne pobieranie</h3><p>Fetcher sprawdza adresy IP i przekierowania. Uwzględnia zasady robotów oraz prawa do zapisu tekstu.</p></li>
+        <li><h3>Ograniczona retencja</h3><p>Domyślna konfiguracja przetwarza prywatny tekst lokalnie. Użytkownik może usunąć analizę za pomocą osobnego tokenu.</p></li>
+        <li><h3>Kontrola wyniku</h3><p>Model zwraca dane w zadanym schemacie. Aplikacja sprawdza cytaty przed zapisem raportu.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide dark" aria-labelledby="tested">
+    <div class="slide-content">
+      <h2 id="tested">Co potwierdziły testy</h2>
+      <ul class="cells cells-dark">
+        <li><h3>40 żądań · 2 workery</h3><p>Test PostgreSQL objął równoległe żądania, deduplikację i odzyskiwanie wygasłych rezerwacji zadań.</p></li>
+        <li><h3>Zgodność dwóch kanałów</h3><p>Test z symulowanym modelem porównał cytat i zestaw źródeł zwrócone przez WWW i adapter.</p></li>
+        <li><h3>Obsługa w Brave</h3><p>Test z odpowiedziami wzorcowymi sprawdził klawiaturę, widok mobilny i przejście od kolejki do raportu.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide light" aria-labelledby="evaluation">
+    <div class="slide-content split">
+      <div class="cluster">
+        <h2 id="evaluation" class="wide">Wyniki dla rzeczywistych zapytań</h2>
+        <p class="status">Pierwsza próba z publicznym adresem urzędowym przekroczyła limit czasu.</p>
+      </div>
+      <div class="cluster topline">
+        <p>Pełny pomiar jakości i czasów odpowiedzi wymaga co najmniej 30 ręcznie ocenionych przypadków.</p>
+        <p class="note">Przykładowe progi konkursowe obejmują F1&nbsp;≥&nbsp;0,75, pokrycie cytatami ≥&nbsp;95% oraz medianę czasu ≤&nbsp;30&nbsp;s. Brak potwierdzenia osiągnięcia tych progów.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="presentation-nav" aria-label="Nawigacja prezentacji">
+  <button id="prev" type="button" aria-label="Poprzedni slajd">‹</button>
+  <span id="slide-count" aria-live="polite">1/8</span>
+  <button id="next" type="button" aria-label="Następny slajd">›</button>
+</nav>
+<script>
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const previous = document.querySelector("#prev");
+  const next = document.querySelector("#next");
+  const count = document.querySelector("#slide-count");
+  let current = 0;
+  const change = (number) => {
+    const clamped = Math.max(0, Math.min(slides.length - 1, number));
+    slides[clamped].scrollIntoView();
+  };
+  previous.addEventListener("click", () => change(current - 1));
+  next.addEventListener("click", () => change(current + 1));
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const keys = {
+      ArrowDown: () => current + 1, ArrowRight: () => current + 1, PageDown: () => current + 1,
+      ArrowUp: () => current - 1, ArrowLeft: () => current - 1, PageUp: () => current - 1,
+      Home: () => 0, End: () => slides.length - 1,
+    };
+    if (!Object.hasOwn(keys, event.key)) return;
+    event.preventDefault();
+    change(keys[event.key]());
+  });
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.intersectionRatio < .75) continue;
+      current = slides.indexOf(entry.target);
+      count.textContent = (current + 1) + "/" + slides.length;
+      previous.disabled = current === 0;
+      next.disabled = current === slides.length - 1;
+    }
+  }, { threshold: .75 });
+  slides.forEach((slide) => observer.observe(slide));
+</script>
+</body>
+</html>

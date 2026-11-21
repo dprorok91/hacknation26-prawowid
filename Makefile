@@ -6,12 +6,12 @@ db-up:
 db-down:
 	docker compose --env-file .env down
 serve:
-	uv run uvicorn prawdowid.main:app --reload --port 8000
+	uv run --locked uvicorn prawdowid.main:app --reload --port 8000 --no-access-log
 worker:
-	@echo 'Worker not implemented in starter. Codex task P0-03.'; exit 1
+	uv run --locked python -m prawdowid.worker
 test:
-	uv run pytest -q
+	uv run --locked pytest -q
 lint:
-	uv run ruff check .
+	uv run --locked ruff check .
 smoke:
 	bash scripts/smoke.sh

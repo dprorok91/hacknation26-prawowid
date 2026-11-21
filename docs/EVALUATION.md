@@ -14,3 +14,18 @@
 
 ## MSZ acceptance targets
 Macro-F1 >=0.75; citation coverage >=0.95; citation support >=0.85; correct abstention >=0.80; injection defense >=0.90; median <=30s. Report actual values and deviations, not a green check by fiat.
+
+## Reproduce a run
+
+Run the API and worker as described in the [README](../README.md), then provide a JSONL file of reviewed cases.
+
+```bash
+uv run --locked python scripts/evaluate.py path/to/reviewed-cases.jsonl --both-channels
+uv run --locked python scripts/evaluate.py tests/fixtures/injection_cases.jsonl
+```
+
+Each case has an `id`, a `kind` of `text` or `url`, and `input`. Add `expected` for a substantive verdict, `claim` to select a specific verbatim claim in a multi-claim answer, and `expected_error` for a technical outcome. A manually reviewed citation may provide a `reviewed_citation` object with the original `url` and expected literal `quote`. Mark synthetic attack rows with `synthetic: true` and `injection: true`, and optionally specify a `forbidden_output` canary. Synthetic rows do not contribute to real-case accuracy. The runner reports unknown measurements as null and keeps thresholds separate from case counts. A gold quote match is measured only on cases with an adjudicated citation.
+
+`tests/fixtures/source_records.jsonl` records 112 unique public links across 10 publishers and three source types. The snapshot consists of 80 primary records, 20 news records, and 12 fact checks. It is metadata-only. The collector emits the original discovery URL, retrieval timestamp and applicable reuse policy with each record. Use the catalog importer to load the snapshot without automatically approving its sources for article text. If refreshing the file, write to a temporary file and replace the checked-in snapshot only when `scripts/collect_sources.py` exits successfully.
+
+The audit API reports locally measured request latency and Ollama token counters when available. Projected local API fees exclude hosting, electricity, and hardware costs.
