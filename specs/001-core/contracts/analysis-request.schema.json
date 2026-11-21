@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "InputKind": {
+      "enum": [
+        "text",
+        "url"
+      ],
+      "title": "InputKind",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/InputKind"
+    },
+    "content": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Content",
+      "type": "string"
+    },
+    "language": {
+      "const": "pl",
+      "default": "pl",
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "content"
+  ],
+  "title": "AnalysisRequest",
+  "type": "object"
+}

@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "ArticleSummary": {
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "headline": {
+          "title": "Headline",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "metadata_only": {
+          "default": false,
+          "title": "Metadata Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_id",
+        "headline",
+        "summary"
+      ],
+      "title": "ArticleSummary",
+      "type": "object"
+    },
+    "ClaimResult": {
+      "properties": {
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "evidence_source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Source Ids",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim_id",
+        "text",
+        "verdict",
+        "rationale"
+      ],
+      "title": "ClaimResult",
+      "type": "object"
+    },
+    "MediaFrame": {
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "emphasis": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Emphasis",
+          "type": "array"
+        },
+        "highlighted_passage_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Highlighted Passage Ids",
+          "type": "array"
+        },
+        "caveat": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caveat"
+        }
+      },
+      "required": [
+        "source_id",
+        "event_id",
+        "emphasis",
+        "highlighted_passage_ids"
+      ],
+      "title": "MediaFrame",
+      "type": "object"
+    },
+    "SourceReference": {
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "passage_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Passage Id"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "fetched_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fetched At"
+        },
+        "exact_quote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exact Quote"
+        },
+        "supports_claim_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supports Claim Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "publisher",
+        "title",
+        "url"
+      ],
+      "title": "SourceReference",
+      "type": "object"
+    },
+    "Verdict": {
+      "enum": [
+        "confirmed",
+        "false",
+        "misleading",
+        "insufficient_evidence",
+        "not_verifiable"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "analysis_id": {
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/ClaimResult"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "narratives": {
+      "items": {
+        "$ref": "#/$defs/MediaFrame"
+      },
+      "title": "Narratives",
+      "type": "array"
+    },
+    "articles": {
+      "items": {
+        "$ref": "#/$defs/ArticleSummary"
+      },
+      "title": "Articles",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceReference"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "source_snapshot": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Snapshot"
+    }
+  },
+  "required": [
+    "analysis_id"
+  ],
+  "title": "AnalysisReport",
+  "type": "object"
+}

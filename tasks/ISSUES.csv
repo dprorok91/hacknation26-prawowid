@@ -1,0 +1,14 @@
+issue_id,title,priority,depends_on,acceptance_summary
+P0-00,Development setup,P0,,uv sync; docker; tests; CI
+P0-01,API and quality gate,P0,P0-00,Input types; errors separate from verdicts; two channels
+P0-02,Postgres schema and ports,P0,P0-00,Migrations + pgvector + unique keys
+P0-03,Durable queue + concurrency,P0,P0-02,SKIP LOCKED; 40 concurrent requests; 2 workers
+P0-04,News and factcheck discovery,P0,P0-01,RSS/GDELT/FactCheck; budget; timeouts
+P0-05,Safe fetch + versioned ingestion,P0,P0-03;P0-04,SSRF; article extraction; metadata-only provenance
+P0-06,Hybrid retrieval,P0,P0-02;P0-05,E5 + PG FTS + pgvector; RRF; event matching
+P0-07,Evidence verification,P0,P0-06,5 verdicts; deterministic citation validation
+P0-08,Narrative comparison,P0,P0-06,Compare selection/emphasis; multiple true facts
+P0-09,Report service and web,P0,P0-07;P0-08,JSON; source links; responsive UI
+P0-10,Second channel & observability,P0,P0-09,Demo message adapter; redacted logs; same result
+P0-11,MSZ evaluation + delivery,P0,P0-10,30 cases; 100 real sources; metrics; docs; demo
+P1-12,Chrome/Brave MV3 extension,P1,P0-09,Context menu; active URL; sidepanel; privacy
