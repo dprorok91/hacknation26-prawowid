@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from prawdowid.api.body_limit import SubmissionBodyLimit
+from prawdowid.api.demo_auth import DemoBasicAuth
 from prawdowid.api.routes import analysis_error_response, router, validation_error_response
 from prawdowid.application.analyses import AnalysisError, AnalysisService, UnavailableAnalyses
 from prawdowid.config import Settings, get_settings
@@ -52,6 +53,15 @@ def create_app(
             await database.dispose()
 
     app = FastAPI(title="PRAWDOWID MVP", version="0.0.1", lifespan=lifespan)
+    auth_settings = settings or get_settings()
+    auth_user = auth_settings.demo_basic_user
+    auth_password = auth_settings.demo_basic_password
+    if bool(auth_user) != bool(auth_password):
+        raise ValueError("Configure both DEMO_BASIC_USER and DEMO_BASIC_PASSWORD, or neither")
+    if auth_user and auth_password:
+        app.add_middleware(
+            DemoBasicAuth, username=auth_user, password=auth_password.get_secret_value()
+        )
     app.add_middleware(SubmissionBodyLimit)
     app.state.analyses = service if service is not None else UnavailableAnalyses()
     app.add_exception_handler(RequestValidationError, validation_error_response)

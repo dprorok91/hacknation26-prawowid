@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     analysis_retention_hours: int = Field(default=24, ge=1, le=168)
     text_retention_minutes: int = Field(default=15, ge=1, le=120)
     log_raw_user_input: bool = False
+    demo_basic_user: str | None = Field(default=None, repr=False)
+    demo_basic_password: SecretStr | None = Field(default=None, repr=False)
 
     def worker_openrouter_key(self) -> SecretStr:
         key = self.openrouter_api_key

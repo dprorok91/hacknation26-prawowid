@@ -13,7 +13,7 @@ def test_v20_cache_version_invalidates_previous_url_analyses():
 
 def test_new_homepage_forces_reload_of_js_and_prevents_html_staleness():
     index = (Path(__file__).resolve().parents[1] / "src/prawdowid/web/index.html").read_text()
-    assert 'src="/assets/app.js?v=20"' in index
+    assert 'src="/assets/app.js?v=33"' in index
     assert WEB_HEADERS["Cache-Control"] == "no-store"
 
 

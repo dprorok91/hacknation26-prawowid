@@ -26,7 +26,7 @@ def test_page_loads_only_local_owned_assets():
     page = BeautifulSoup((WEB_ROOT / "index.html").read_text(encoding="utf-8"), "html.parser")
     paths = [item["href"] for item in page.select("link[rel=stylesheet]")]
     paths.extend(item["src"] for item in page.select("script[src]"))
-    assert sorted(paths) == ["/assets/app.js?v=20", "/assets/styles.css"]
+    assert sorted(paths) == ["/assets/app.js?v=33", "/assets/styles.css?v=33"]
     assert all((WEB_ROOT / Path(urlsplit(path).path).name).is_file() for path in paths)
     assert not page.select("script:not([src])")
 
@@ -44,7 +44,7 @@ def test_web_lookup_is_a_visible_native_checkbox_and_highlights_are_accessible()
     page = BeautifulSoup((WEB_ROOT / "index.html").read_text(encoding="utf-8"), "html.parser")
     checkbox = page.select_one("input#enable-web-search")
     assert checkbox is not None and checkbox["type"] == "checkbox"
-    assert "checked" not in checkbox.attrs  # Explicit privacy opt-in.
+    assert "checked" in checkbox.attrs  # Visible default; user can opt out for private data.
     label = page.select_one("label[for=enable-web-search]")
     assert label is not None and "choice" not in label.get("class", [])
     css = (WEB_ROOT / "styles.css").read_text(encoding="utf-8")
@@ -53,3 +53,10 @@ def test_web_lookup_is_a_visible_native_checkbox_and_highlights_are_accessible()
     assert 'const tooltip = element("span", null, "claim-tooltip")' in js
     assert 'target.focus()' in js
     assert 'web_search: kind === "text" && webSearch.checked' in js
+    progress = page.select_one("#analysis-progress")
+    assert progress["role"] == "progressbar" and "aria-valuenow" not in progress.attrs
+    assert page.select_one("#progress-phase") and page.select_one("#progress-elapsed")
+    assert "setProgressPhase" in js
+    assert "reportContent.append(first, details)" in js
+    assert "webSearch.checked = false" not in js
+    assert page.select_one(".site-nav") and page.select_one(".examples-actions")

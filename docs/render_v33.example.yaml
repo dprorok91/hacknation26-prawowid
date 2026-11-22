@@ -1,0 +1,26 @@
+# Optional Render Free DEMO. Requires external Neon PostgreSQL (+ vector extension).
+# A single Render web process launches API and poller; cold starts and idle
+# shutdown mean this is NOT a durable/production queue worker.
+services:
+  - type: web
+    name: prawdowid-hacknation-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --locked --no-dev
+    startCommand: bash scripts/start_hosted_demo.sh
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.9
+      - key: PUBLIC_LLM_PROVIDER
+        value: openrouter_all
+      - key: APP_ENV
+        value: demo
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DEMO_BASIC_USER
+        sync: false
+      - key: DEMO_BASIC_PASSWORD
+        sync: false

@@ -103,12 +103,13 @@ async def test_absolute_claim_searches_local_counter_context():
     assert results["c1"].passages == ()
 
 
-def test_url_failure_fallback_is_explicit_and_does_not_auto_enable_web_search():
+def test_url_failure_fallback_preserves_visible_online_choice():
     path = Path(__file__).resolve().parents[1] / "src" / "prawdowid" / "web"
     html = (path / "index.html").read_text()
     js = (path / "app.js").read_text()
     assert 'id="paste-article-fallback"' in html
-    assert 'webSearch.checked = false;' in js
+    assert 'webSearch.checked = false;' not in js
+    assert 'id="enable-web-search" type="checkbox" name="web_search" checked' in html
     assert 'code === "source_unavailable"' in js
     assert "pasteFallback.addEventListener" in js
 

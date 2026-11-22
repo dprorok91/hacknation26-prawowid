@@ -4,66 +4,78 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#f5f3ec">
-  <title>PRAWDOWID</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js?v=20" defer></script>
+  <meta name="theme-color" content="#070c12">
+  <meta name="color-scheme" content="dark">
+  <title>PRAWDOWID — sprawdzaj fakty, odkrywaj kontekst</title>
+  <meta name="description" content="Weryfikuj twierdzenia i artykuły. Sprawdź cytaty, źródła i ograniczenia dowodów.">
+  <link rel="stylesheet" href="/assets/styles.css?v=33">
+  <script src="/assets/app.js?v=33" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#tresc">Przejdź do treści</a>
   <header class="site-header">
-    <a class="wordmark" href="/" translate="no">PRAWDOWID</a>
+    <a class="wordmark" href="/" translate="no"><span class="brand-symbol" aria-hidden="true">✳</span> PRAWDOWID<span class="brand-stop">.</span></a>
+    <nav class="site-nav" aria-label="Nawigacja główna">
+      <a href="#jak-to-dziala">Jak to działa</a>
+      <a href="#zasady">Zasady</a>
+    </nav>
+    <span class="header-tag"><span class="online-dot" aria-hidden="true"></span> Wersja demonstracyjna</span>
   </header>
   <main id="tresc" tabindex="-1">
     <div class="workspace">
       <section class="intro" aria-labelledby="tytul">
-        <h1 id="tytul">Sprawdź, co potwierdzają źródła</h1>
-        <p>Wklej fragment tekstu lub adres artykułu. Raport pokaże ocenę twierdzeń, cytaty i różnice w relacjach źródeł.</p>
+        <span class="hero-eyebrow"><span aria-hidden="true">✳</span> WIĘCEJ NIŻ FACT-CHECKING</span>
+        <h1 id="tytul">Nie wierz na słowo.<br><span>Sprawdź źródła.</span></h1>
+        <p>Wklej zdanie lub link do artykułu. PRAWDOWID szuka dowodów, porównuje kontekst i uczciwie pokazuje, czego nie udało się ustalić.</p>
+        <div class="hero-highlights" aria-label="Zasady analizy">
+          <span>Rzeczywiste cytaty</span><span>Polskie źródła</span><span>Bez zgadywania</span>
+        </div>
       </section>
       <form id="analysis-form" class="entry">
         <fieldset>
-          <legend>Co chcesz sprawdzić?</legend>
+          <legend>Co chcesz zweryfikować?</legend>
           <div class="choices">
-            <label class="choice">
-              <input type="radio" name="kind" value="text" checked>
-              <span>Fragment tekstu</span>
-            </label>
-            <label class="choice">
-              <input type="radio" name="kind" value="url">
-              <span>Adres artykułu</span>
-            </label>
+            <label class="choice"><input type="radio" name="kind" value="text" checked><span>Twierdzenie / tekst</span></label>
+            <label class="choice"><input type="radio" name="kind" value="url"><span>Link do artykułu</span></label>
           </div>
         </fieldset>
         <div id="field-text" class="field">
-          <label for="content-text">Fragment do analizy</label>
+          <label for="content-text">Wpisz lub wklej informację</label>
           <textarea id="content-text" name="text" rows="5" maxlength="20000" required
-                    autocomplete="off" aria-describedby="field-error model-disclosure" placeholder="Wklej fragment tekstu…"></textarea>
-          <p id="model-disclosure" class="minor">W trybie OpenRouter dla wszystkich analiz wklejony tekst jest przekazywany dostawcy modelu i może być przetwarzany poza UE.</p>
+                    autocomplete="off" aria-describedby="field-error model-disclosure" placeholder="Np. Władze Krakowa zaproponowały zmniejszenie SCT."></textarea>
+          <p id="model-disclosure" class="minor">Treść może być przekazana dostawcy modelu językowego poza UE. Nie wpisuj danych poufnych.</p>
         </div>
         <div id="field-url" class="field" hidden>
-          <label for="content-url">Adres artykułu</label>
+          <label for="content-url">Publiczny adres artykułu</label>
           <input id="content-url" name="url" type="url" inputmode="url" maxlength="20000"
                  autocomplete="off" autocapitalize="none" spellcheck="false" required disabled
-                 aria-describedby="field-error hosting-notice" placeholder="https://przyklad.pl/artykul…">
-          <p id="hosting-notice" class="minor">Jeśli administrator włączył OpenRouter, treść artykułu
-          z zatwierdzonego źródła i fragmenty źródeł użyte do weryfikacji mogą trafić do
-          dostawcy modelu poza Unią Europejską.</p>
+                 aria-describedby="field-error hosting-notice" placeholder="https://serwis.pl/artykul">
+          <p id="hosting-notice" class="minor">Możliwy jest odczyt treści artykułu i przekazanie fragmentów dostawcy modelu poza UE. Nie każdy serwis pozwala pobrać pełny tekst.</p>
         </div>
-        <div id="web-search-choice" class="field">
+        <div id="web-search-choice" class="field web-search-panel">
           <label class="web-optin" for="enable-web-search">
-            <input id="enable-web-search" type="checkbox" name="web_search">
-            <span>Szukaj też w publicznych źródłach online</span>
+            <input id="enable-web-search" type="checkbox" name="web_search" checked>
+            <span><strong>Wyszukiwanie online</strong><small>Włączone domyślnie · możesz wyłączyć</small></span>
           </label>
-          <p class="minor">Po zaznaczeniu temat i frazy z podanego tekstu mogą trafić
-          do zewnętrznych wyszukiwarek wiadomości. Nie używaj tej opcji dla danych prywatnych.</p>
+          <p class="minor">Frazy wyszukiwania mogą trafić do zewnętrznych dostawców. Wyłącz dla treści prywatnych.</p>
         </div>
         <p id="field-error" class="feedback error" aria-live="polite"></p>
-        <button id="submit-analysis" type="submit">Sprawdź źródła</button>
+        <button id="submit-analysis" class="submit-button" type="submit">Sprawdź źródła <span aria-hidden="true">↗</span></button>
       </form>
+      <div class="examples" aria-label="Przykładowe pytania">
+        <p>Spróbuj na przykład</p>
+        <div class="examples-actions">
+          <button type="button" class="example-chip" data-example="Władze Krakowa zaproponowały zmniejszenie SCT.">Zmniejszenie SCT</button>
+          <button type="button" class="example-chip" data-example="Światowy Dzień Pamięci Ofiar Wypadków Drogowych przypada w trzecią niedzielę listopada.">Dzień pamięci</button>
+          <button type="button" class="example-chip" data-example="Strefy czystego transportu są niesprawiedliwe wobec kierowców.">Fakt czy opinia?</button>
+        </div>
+      </div>
     </div>
-    <p id="analysis-status" class="feedback status" role="status"></p>
-    <button type="button" id="paste-article-fallback" class="secondary" hidden>Wklej tekst artykułu zamiast adresu</button>
-    <button type="button" id="delete-analysis" class="secondary delete-action" hidden>Usuń analizę</button>
+    <p id="analysis-status" class="feedback status" role="status" aria-live="polite"></p>
+    <div class="support-actions">
+      <button type="button" id="paste-article-fallback" class="secondary" hidden>Wklej tekst artykułu zamiast adresu</button>
+      <button type="button" id="delete-analysis" class="secondary delete-action" hidden>Usuń analizę</button>
+    </div>
     <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
       <h2 id="delete-title">Usunąć analizę?</h2>
       <p id="delete-description">Raport przestanie być dostępny po usunięciu.</p>
@@ -74,14 +86,23 @@
     </dialog>
     <section id="report" class="report" aria-labelledby="report-title" hidden>
       <div class="report-header">
-        <h2 id="report-title" tabindex="-1">Wynik analizy</h2>
+        <div><span class="report-kicker">RAPORT · OPRACOWANY NA PODSTAWIE ŹRÓDEŁ</span><h2 id="report-title" tabindex="-1">Wynik weryfikacji</h2></div>
         <div id="report-actions" class="actions" hidden>
-          <button type="button" id="share-report" class="secondary">Utwórz link do raportu</button>
+          <button type="button" id="share-report" class="secondary">Link do raportu</button>
           <a id="public-link" hidden>Otwórz publiczny raport</a>
         </div>
       </div>
       <div id="report-content"></div>
     </section>
+    <footer id="jak-to-dziala" class="site-footer">
+      <div><strong>Twierdzenie → źródła → dowody → wniosek.</strong><p>Wynik jest oceną dostępnych materiałów, a nie gwarancją prawdy. Wątpliwości i brak danych pokazujemy wprost.</p></div>
+      <p id="zasady">PRAWDOWID · HackNation · Bez reklam i bez rankingu „prawdziwości” wydawców.</p>
+    </footer>
   </main>
+  <div id="analysis-progress" class="progress-dock" role="progressbar" aria-label="Trwa analiza" aria-valuetext="Przygotowanie analizy" hidden>
+    <div class="progress-top"><span id="progress-phase">Przygotowanie analizy…</span><span id="progress-elapsed">0 s</span></div>
+    <div class="progress-track"><div class="progress-indicator"></div></div>
+    <p>Przetwarzanie odbywa się na serwerze. Pasek pokazuje aktywność, nie procent ukończenia.</p>
+  </div>
 </body>
 </html>

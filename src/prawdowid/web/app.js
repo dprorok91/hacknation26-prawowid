@@ -19,6 +19,11 @@ const inputUrl = document.querySelector("#content-url");
 const webSearchChoice = document.querySelector("#web-search-choice");
 const webSearch = document.querySelector("#enable-web-search");
 const pasteFallback = document.querySelector("#paste-article-fallback");
+const progressDock = document.querySelector("#analysis-progress");
+const progressPhase = document.querySelector("#progress-phase");
+const progressElapsed = document.querySelector("#progress-elapsed");
+let progressSince = 0;
+let progressTimer = null;
 
 const analysisIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const dateFormat = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" });
@@ -66,6 +71,25 @@ function setStatus(message, isError = false) {
 function setSubmitting(pending) {
   submitting = pending;
   submit.disabled = submitting || deleting;
+  if (pending) {
+    progressSince = Date.now();
+    progressDock.hidden = false;
+    setProgressPhase("Przygotowanie analizy…");
+    clearInterval(progressTimer);
+    progressElapsed.textContent = "0 s";
+    progressTimer = setInterval(() => {
+      progressElapsed.textContent = Math.floor((Date.now() - progressSince) / 1000) + " s";
+    }, 1000);
+  } else {
+    clearInterval(progressTimer);
+    progressTimer = null;
+    progressDock.hidden = true;
+  }
+}
+
+function setProgressPhase(label) {
+  progressPhase.textContent = label;
+  progressDock.setAttribute("aria-valuetext", label);
 }
 
 function setDeletionGrant(grant) {
@@ -504,6 +528,23 @@ function showReport(data, shareCandidate = false) {
     reportContent.append(element("p", "Raport nie zawiera twierdzeń ani źródeł."));
   }
 
+  // Keep the verdict and citations visible first. Technical diagnostics stay
+  // available, but do not bury the answer in counters and discovery metadata.
+  const summaryCard = reportContent.querySelector(".result-summary");
+  const claimTitle = Array.from(reportContent.querySelectorAll("h3"))
+    .find((node) => node.textContent === "Twierdzenia");
+  const claimList = claimTitle?.nextElementSibling?.classList.contains("report-list")
+    ? claimTitle.nextElementSibling : null;
+  const first = element("div", null, "primary-results");
+  if (summaryCard) first.append(summaryCard);
+  if (claimTitle) first.append(claimTitle);
+  if (claimList) first.append(claimList);
+  const details = document.createElement("details");
+  details.className = "analysis-details";
+  details.append(element("summary", "Metodologia, wyszukiwanie i pozostałe źródła"));
+  while (reportContent.firstChild) details.append(reportContent.firstChild);
+  reportContent.append(first, details);
+
   actions.hidden = !shareCandidate;
   share.hidden = false;
   publicLink.hidden = true;
@@ -532,7 +573,9 @@ async function poll(id, result) {
     const delay = Math.min(4000, Math.max(500, (Number(result.retry_after_seconds) || 1) * 1000));
     if (Date.now() + delay >= deadline) break;
     if (!deleting) {
-      setStatus(result.status === "queued" ? "Analiza czeka w kolejce…" : "Sprawdzanie źródeł…");
+      const phase = result.status === "queued" ? "Analiza czeka w kolejce…" : "Sprawdzanie źródeł i weryfikacja cytatów…";
+      setStatus(phase);
+      setProgressPhase(phase);
     }
     await new Promise((resolve) => setTimeout(resolve, delay));
     if (currentAnalysisId !== id) return null;
@@ -548,6 +591,7 @@ function syncInput() {
   rowUrl.hidden = !isUrl;
   inputText.disabled = isUrl;
   inputUrl.disabled = !isUrl;
+  // URL mode fetches its source directly; the API forbids web_search=true for URLs.
   webSearchChoice.hidden = isUrl;
   webSearch.disabled = isUrl;
   clearFieldError();
@@ -556,7 +600,7 @@ function syncInput() {
 pasteFallback.addEventListener("click", () => {
   const textMode = form.querySelector('input[name="kind"][value="text"]');
   textMode.checked = true;
-  webSearch.checked = false; // Web search of pasted content requires fresh, explicit consent.
+  // Preserve the visible checkbox selection, including the default online mode.
   syncInput();
   pasteFallback.hidden = true;
   inputText.focus();
@@ -585,6 +629,7 @@ form.addEventListener("submit", async (event) => {
   currentAnalysisId = null;
   setDeletionGrant(null);
   setStatus("Przesyłanie do analizy…");
+  setProgressPhase("Przesyłanie zgłoszenia…");
   let submittedId = null;
   let deleteToken = null;
   try {
@@ -698,6 +743,25 @@ async function loadPublicReport(id) {
     setSubmitting(false);
   }
 }
+
+document.querySelectorAll("[data-example]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const textMode = form.querySelector('input[name="kind"][value="text"]');
+    textMode.checked = true;
+    syncInput();
+    inputText.value = button.dataset.example || "";
+    clearFieldError();
+    inputText.focus();
+  });
+});
+
+reportContent.addEventListener("click", (event) => {
+  const anchor = event.target.closest("a[href^='#source-']");
+  if (anchor) {
+    const details = reportContent.querySelector(".analysis-details");
+    if (details) details.open = true;
+  }
+});
 
 syncInput();
 const requestedReport = new URLSearchParams(location.search).get("report");
