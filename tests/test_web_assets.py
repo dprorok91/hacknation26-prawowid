@@ -37,3 +37,18 @@ def test_analysis_delete_is_hidden_and_confirmation_has_cancel_default():
     assert dialog.select_one(f"#{dialog['aria-labelledby']}")
     assert dialog.select_one("form[method=dialog] button[value=cancel][autofocus]")
     assert dialog.select_one("form[method=dialog] button[value=delete]")
+
+
+def test_web_lookup_is_a_visible_native_checkbox_and_highlights_are_accessible():
+    page = BeautifulSoup((WEB_ROOT / "index.html").read_text(encoding="utf-8"), "html.parser")
+    checkbox = page.select_one("input#enable-web-search")
+    assert checkbox is not None and checkbox["type"] == "checkbox"
+    assert "checked" not in checkbox.attrs  # Explicit privacy opt-in.
+    label = page.select_one("label[for=enable-web-search]")
+    assert label is not None and "choice" not in label.get("class", [])
+    css = (WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+    js = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    assert '.web-optin input[type="checkbox"]' in css
+    assert 'const tooltip = element("span", null, "claim-tooltip")' in js
+    assert 'target.focus()' in js
+    assert 'web_search: kind === "text" && webSearch.checked' in js

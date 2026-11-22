@@ -19,3 +19,30 @@
 - https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/
 - https://developers.google.com/fact-check/tools/api
 - https://brave.com/search/api/
+
+### Offline-first development
+
+See [Free news discovery](FREE_NEWS_DEV.md) for PostgreSQL metadata cache,
+NewsData.io fallback with daily credit reservation, and approval-gated ingestion.
+
+## OpenRouter for public articles
+
+The worker defaults to Ollama. To enable OpenRouter, set `PUBLIC_LLM_PROVIDER=openrouter`,
+`OPENROUTER_MODEL=openai/gpt-4.1-mini`, and `OPENROUTER_API_KEY` in the worker's environment
+and restart the worker. Use a deployment secret or a private environment file for the key.
+An explicitly enabled worker requires a nonblank key at startup. Keep Ollama running for
+pasted text, message-demo traffic, and URLs with query parameters. Enabling web search
+on pasted text does not authorize hosted model inference.
+
+For a smoke check, submit a queryless URL from an approved publisher to
+`POST /api/v1/analyses`. After completion, read `GET /api/v1/analyses/{id}/audit`
+for the model, input/output tokens and reported cost. Submit the same URL to
+`POST /api/v1/adapters/message-demo` to compare the local result. The hosted request
+contains the approved article text and, during verification, relevant corpus excerpts.
+Provider errors use the existing analysis error codes.
+
+Cost represents OpenRouter's reported charges for completed calls in a successful first
+attempt. Missing usage, failed jobs, and retried hosted jobs have unknown total cost.
+Check the OpenRouter account activity for the actual billed total.
+
+With `PUBLIC_LLM_PROVIDER=openrouter_all`, every model call uses OpenRouter, including pasted text and the message-demo channel. The OpenRouter worker launcher selects this mode. Publisher approval still governs article fetching.

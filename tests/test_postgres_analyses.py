@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from datetime import UTC, datetime
+from decimal import Decimal
 from hashlib import sha256
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
+from prawdowid.application.analyses import Submission
 from prawdowid.application.worker import JobWorker
 from prawdowid.infrastructure.analysis_store import (
     PostgresAnalyses,
@@ -84,15 +86,16 @@ async def test_40_successful_posts_and_two_overlapping_workers():
     database = create_database(url)
     service = PostgresAnalyses(database.sessions)
     queue = PostgresJobQueue(database.sessions, kinds=("ANALYZE",))
-    fetch_keys = {
-        sha256((resource + suffix).encode()).hexdigest() for suffix in ("", "/other", "/restart")
-    }
+    fetch_keys = {sha256((resource + suffix).encode()).hexdigest() for suffix in ("", "/restart")}
     first_started, second_started, finish = asyncio.Event(), asyncio.Event(), asyncio.Event()
     observations = {}
 
     async def handle(lease):
         analysis_id = lease.payload["analysis_id"]
         assert analysis_id not in observations
+        async with database.sessions.begin() as session:
+            claimed = await claim_analysis_input(session, lease)
+        assert claimed.public_model_allowed is (analysis_id == main_id)
         observations[analysis_id] = lease.worker_id
         if lease.worker_id == "worker-1":
             first_started.set()
@@ -105,6 +108,8 @@ async def test_40_successful_posts_and_two_overlapping_workers():
                 session,
                 analysis_id,
                 report={"analysis_id": analysis_id, "source_snapshot": "fixture"},
+                model_name="model-fixture",
+                estimated_cost_usd=Decimal("0.0056") if claimed.public_model_allowed else None,
             )
 
         return effect
@@ -124,21 +129,21 @@ async def test_40_successful_posts_and_two_overlapping_workers():
                 )
             )
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            submissions = await asyncio.gather(
+            *submissions, another = await asyncio.gather(
                 *[
                     client.post("/api/v1/analyses", json={"kind": "url", "content": resource})
                     for _ in range(40)
-                ]
+                ],
+                client.post(
+                    "/api/v1/adapters/message-demo", json={"kind": "url", "content": resource}
+                ),
             )
             assert all(response.status_code == 202 for response in submissions)
             analysis_ids.update(response.json()["analysis_id"] for response in submissions)
             assert len(analysis_ids) == 1
             main_id = next(iter(analysis_ids))
-            another = await client.post(
-                "/api/v1/adapters/message-demo",
-                json={"kind": "url", "content": resource + "/other"},
-            )
             assert another.status_code == 202
+            assert another.json()["analysis_id"] != main_id
             analysis_ids.add(another.json()["analysis_id"])
 
             first = JobWorker(queue, "worker-1", handle)
@@ -155,6 +160,8 @@ async def test_40_successful_posts_and_two_overlapping_workers():
             response = await client.get(f"/api/v1/analyses/{main_id}")
             assert response.json()["status"] == "completed"
             assert response.json()["report"]["source_snapshot"] == "fixture"
+            assert (await service.audit(main_id)).estimated_cost_usd == 0.0056
+            assert (await service.audit(another.json()["analysis_id"])).estimated_cost_usd is None
             async with database.sessions() as session:
                 assert (
                     await session.scalar(
@@ -195,5 +202,62 @@ async def test_40_successful_posts_and_two_overlapping_workers():
                 sa.delete(jobs).where(jobs.c.dedupe_key.in_(analysis_ids | fetch_keys))
             )
             await session.execute(sa.delete(analyses).where(analyses.c.id.in_(analysis_ids)))
+            await session.execute(sa.delete(sources).where(sources.c.domain == domain))
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["legacy", "revoked", "late_approval"])
+async def test_claim_requires_persisted_eligibility_and_current_source_approval(scenario):
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Set TEST_DATABASE_URL to a migrated disposable PostgreSQL database.")
+    database = create_database(url)
+    domain = f"{uuid4().hex}.example"
+    resource = f"https://{domain}/report"
+    service = PostgresAnalyses(database.sessions)
+    queue = PostgresJobQueue(database.sessions, kinds=("ANALYZE",))
+    submission = None
+    try:
+        async with database.sessions.begin() as session:
+            await session.execute(
+                sa.insert(sources).values(
+                    domain=domain,
+                    display_name="Fixture",
+                    source_type="primary",
+                    approved_at=datetime.now(UTC),
+                    enabled=scenario != "late_approval",
+                    license_label="fixture",
+                )
+            )
+        submission = await service.submit(Submission("url", resource, public_model_allowed=True))
+        async with database.sessions.begin() as session:
+            if scenario == "legacy":
+                await session.execute(
+                    sa.update(jobs)
+                    .where(jobs.c.kind == "ANALYZE", jobs.c.dedupe_key == submission.analysis_id)
+                    .values(payload_json={"analysis_id": submission.analysis_id})
+                )
+            else:
+                await session.execute(
+                    sa.update(sources)
+                    .where(sources.c.domain == domain)
+                    .values(enabled=scenario == "late_approval")
+                )
+        lease = await queue.lease_next("eligibility-test")
+        assert lease is not None and lease.payload["analysis_id"] == submission.analysis_id
+        async with database.sessions.begin() as session:
+            claimed = await claim_analysis_input(session, lease)
+            assert claimed is not None and claimed.public_model_allowed is False
+    finally:
+        if submission is not None:
+            await service.delete(submission.analysis_id, submission.delete_token)
+        async with database.sessions.begin() as session:
+            await session.execute(
+                sa.delete(jobs).where(
+                    jobs.c.kind == "FETCH_URL",
+                    jobs.c.dedupe_key == sha256(resource.encode()).hexdigest(),
+                )
+            )
             await session.execute(sa.delete(sources).where(sources.c.domain == domain))
         await database.dispose()

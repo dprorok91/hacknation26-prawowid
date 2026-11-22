@@ -106,7 +106,18 @@ async def test_evidence_verdict_uses_only_literal_retrieved_quotes(
 
 @pytest.mark.asyncio
 async def test_rule_and_missing_evidence_skip_the_model():
-    provider = ModelStub({})
+    class TopicModel:
+        def __init__(self):
+            self.calls = []
+
+        async def complete_json(self, *, schema, prompt):
+            payload = json.loads(prompt)
+            self.calls.append(payload)
+            if payload["task"] == "extract":
+                return {"claims": [], "query_text": ""}
+            return {"kind": "non_claim", "scope": "unknown", "reason": "Topic name, no assertion."}
+
+    provider = TopicModel()
     service = EvidenceService(provider)
     event, claims = await service.extract("ChatGPT Sol")
     assert not event.query_text
@@ -115,7 +126,7 @@ async def test_rule_and_missing_evidence_skip_the_model():
     assert (
         await service.verify(Claim("c1", "Polska ma stolicę."), [])
     ).verdict is Verdict.INSUFFICIENT_EVIDENCE
-    assert not provider.payloads
+    assert [call["task"] for call in provider.calls] == ["extract", "assess"]
 
 
 @pytest.mark.asyncio

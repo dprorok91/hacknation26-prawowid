@@ -3,6 +3,7 @@
 import re
 import secrets
 from datetime import timedelta
+from decimal import Decimal
 from hashlib import sha256
 from hmac import compare_digest
 from ipaddress import ip_address
@@ -111,7 +112,17 @@ class PostgresAnalyses:
                     if not parts.query:
                         public_cache = bool(await approved_license(session, parts.hostname))
                 input_hash = _hash(value) if public_cache else _hash(new_id)
-                cache_key = _hash(f"{PIPELINE_VERSION}:{input_hash}") if public_cache else None
+                public_model_allowed = (
+                    public_cache
+                    and request.public_model_allowed is True
+                    and "?" not in request.content
+                    and "#" not in request.content
+                )
+                # An in-flight analysis is reusable only within the same disclosure boundary.
+                cache_key = None
+                if public_cache:
+                    scope = "public-model" if public_model_allowed else "local-model"
+                    cache_key = _hash(f"{PIPELINE_VERSION}:{scope}:{input_hash}")
                 if cache_key is not None:
                     await session.execute(
                         sa.update(analyses)
@@ -145,7 +156,11 @@ class PostgresAnalyses:
                         session,
                         kind=ANALYZE,
                         dedupe_key=str(row.id),
-                        payload={"analysis_id": str(row.id)},
+                        payload={
+                            "analysis_id": str(row.id),
+                            "public_model_allowed": public_model_allowed,
+                            "web_search": request.kind == "text" and request.web_search,
+                        },
                     )
                     if request.kind == "url":
                         await enqueue_article(session, value)
@@ -292,7 +307,18 @@ async def claim_analysis_input(session: AsyncSession, lease: JobLease) -> Submis
     ).one_or_none()
     if record is None or record.input_redacted is None:
         return None
-    return Submission(record.input_type, record.input_redacted, record.created_at)
+    public_model_allowed = False
+    if record.input_type == "url" and lease.payload.get("public_model_allowed") is True:
+        parts = urlsplit(record.input_redacted)
+        if parts.hostname and not parts.query and not parts.fragment:
+            public_model_allowed = bool(await approved_license(session, parts.hostname))
+    return Submission(
+        record.input_type,
+        record.input_redacted,
+        record.created_at,
+        web_search=lease.payload.get("web_search") is True,
+        public_model_allowed=public_model_allowed,
+    )
 
 
 async def finish_analysis(
@@ -304,6 +330,7 @@ async def finish_analysis(
     model_name: str | None = None,
     tokens_in: int | None = None,
     tokens_out: int | None = None,
+    estimated_cost_usd: Decimal | None = Decimal(0),
 ) -> None:
     if (report is None) == (error_code is None):
         raise ValueError("A finished analysis needs exactly one report or error code")
@@ -344,7 +371,7 @@ async def finish_analysis(
             latency_ms=int((finished.finished_at - finished.created_at).total_seconds() * 1000),
             tokens_in=tokens_in,
             tokens_out=tokens_out,
-            estimated_cost_usd=0 if model_name else None,
+            estimated_cost_usd=estimated_cost_usd if model_name else None,
             source_ids_json=sorted(evidence_links or ()),
             redacted_metadata_json={"error_code": error_code} if error_code else {},
         )

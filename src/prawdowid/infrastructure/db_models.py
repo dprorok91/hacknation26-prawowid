@@ -248,6 +248,27 @@ audit_events = sa.Table(
     sa.Column("redacted_metadata_json", JSONB),
 )
 
+discovery_cache = sa.Table(
+    "discovery_cache",
+    metadata,
+    sa.Column("cache_key", sa.String(64), primary_key=True),
+    sa.Column("provider", sa.Text, nullable=False),
+    sa.Column("results_json", JSONB, nullable=False),
+    _at("created_at", default=True, nullable=False),
+    _at("expires_at", nullable=False),
+)
+
+provider_daily_usage = sa.Table(
+    "provider_daily_usage",
+    metadata,
+    sa.Column("provider", sa.Text, primary_key=True),
+    sa.Column("day_utc", sa.Date, primary_key=True),
+    sa.Column("credits_used", sa.Integer, nullable=False, server_default="0"),
+    sa.CheckConstraint("credits_used >= 0", name="provider_usage_nonnegative"),
+)
+
+sa.Index("ix_discovery_cache_expires_at", discovery_cache.c.expires_at)
+
 sa.Index("ix_documents_source_published", documents.c.source_id, documents.c.published_at.desc())
 sa.Index("ix_jobs_state_run_after_priority", jobs.c.state, jobs.c.run_after, jobs.c.priority)
 sa.Index("ix_analyses_input_pipeline", analyses.c.input_hash, analyses.c.pipeline_version)

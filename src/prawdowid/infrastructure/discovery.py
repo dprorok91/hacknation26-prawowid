@@ -1,12 +1,13 @@
 """Bounded news discovery. Provider metadata is suitable for finding URLs."""
 
 import asyncio
+import hashlib
 import json
 import re
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from itertools import zip_longest
 from math import isfinite
@@ -59,6 +60,16 @@ class DiscoveryProvider(Protocol):
     async def discover(self, event: EventQuery, limit: int) -> Sequence[DocumentCandidate]: ...
 
 
+class DiscoveryCache(Protocol):
+    async def get(self, provider: str, event: EventQuery) -> Sequence[DocumentCandidate] | None: ...
+
+    async def put(self, provider: str, event: EventQuery, candidates: Sequence[DocumentCandidate]) -> None: ...
+
+
+class DailyBudget(Protocol):
+    async def claim(self, provider: str, credits: int = 1) -> bool: ...
+
+
 @dataclass
 class ProviderState:
     recent_requests: deque[float] = field(default_factory=deque)
@@ -79,6 +90,10 @@ class DiscoveryService:
         rate_window_seconds: float = 60,
         breaker_failures: int = 3,
         breaker_seconds: float = 30,
+        cache: DiscoveryCache | None = None,
+        fallback_providers: Iterable[DiscoveryProvider] = (),
+        fallback_budget: DailyBudget | None = None,
+        fallback_min_publishers: int = 2,
     ):
         if min(max_concurrency, max_results, max_requests_per_window, breaker_failures) < 1:
             raise ValueError("discovery limits must be positive")
@@ -88,8 +103,15 @@ class DiscoveryService:
         ):
             raise ValueError("discovery durations must be finite and positive")
         self.providers = tuple(providers)
-        self._provider_state = {provider.name: ProviderState() for provider in self.providers}
-        if len(self._provider_state) != len(self.providers):
+        self.fallback_providers = tuple(fallback_providers)
+        if fallback_min_publishers < 1:
+            raise ValueError("fallback_min_publishers must be positive")
+        self.fallback_min_publishers = fallback_min_publishers
+        self.cache = cache
+        self.fallback_budget = fallback_budget
+        all_providers = self.providers + self.fallback_providers
+        self._provider_state = {provider.name: ProviderState() for provider in all_providers}
+        if len(self._provider_state) != len(all_providers):
             raise ValueError("discovery provider names must be unique")
         self.timeout_seconds = timeout_seconds
         self.max_results = min(max_results, 250)
@@ -102,24 +124,44 @@ class DiscoveryService:
     async def discover(self, event: EventQuery) -> DiscoveryReport:
         if not _query(event):
             return DiscoveryReport()
-        results = await asyncio.gather(
+        primary = await asyncio.gather(
             *(self._search(provider, event) for provider in self.providers)
         )
         selected = {}
-        errors = tuple(error for _, error in results if error is not None)
-        for rows in zip_longest(*(candidates for candidates, _ in results)):
+        errors = [error for _, error in primary if error is not None]
+        for rows in zip_longest(*(candidates for candidates, _ in primary)):
             for candidate in rows:
                 if candidate is not None:
                     selected.setdefault(candidate.canonical_url, candidate)
-                    if len(selected) >= self.max_results:
-                        return DiscoveryReport(tuple(selected.values()), errors)
-        return DiscoveryReport(tuple(selected.values()), errors)
+        domains = {
+            (getattr(item, "domain", None) or urlsplit(item.canonical_url).hostname or "")
+            .casefold().removeprefix("www.")
+            for item in selected.values()
+        }
+        domains.discard("")
+        if len(domains) < self.fallback_min_publishers and self.fallback_providers:
+            fallback = await asyncio.gather(
+                *(self._search(provider, event, fallback=True) for provider in self.fallback_providers)
+            )
+            errors.extend(error for _, error in fallback if error is not None)
+            for rows in zip_longest(*(candidates for candidates, _ in fallback)):
+                for candidate in rows:
+                    if candidate is not None:
+                        selected.setdefault(candidate.canonical_url, candidate)
+        return DiscoveryReport(tuple(list(selected.values())[:self.max_results]), tuple(errors))
 
-    async def _search(self, provider: DiscoveryProvider, event: EventQuery):
+    async def _search(self, provider: DiscoveryProvider, event: EventQuery, *, fallback=False):
         state = self._provider_state[provider.name]
         started = False
         try:
             async with asyncio.timeout(self.timeout_seconds), self._slots:
+                # Do not spend free-tier credits on events outside its 48-hour window.
+                if fallback and isinstance(provider, NewsDataDiscovery) and not provider.can_search(event):
+                    return (), None
+                if self.cache is not None:
+                    cached = await self.cache.get(provider.name, event)
+                    if cached is not None:
+                        return cached, None
                 now = monotonic()
                 if state.blocked_until > now:
                     return (), self._error(provider.name, state.blocked_code, True)
@@ -130,10 +172,18 @@ class DiscoveryService:
                     state.recent_requests.popleft()
                 if len(state.recent_requests) >= self.max_requests_per_window:
                     return (), self._error(provider.name, "provider_rate_limited", True)
+                if (
+                    fallback
+                    and self.fallback_budget is not None
+                    and not await self.fallback_budget.claim(provider.name)
+                ):
+                    return (), self._error(provider.name, "provider_rate_limited", False)
                 state.recent_requests.append(now)
                 started = True
                 candidates = await provider.discover(event, self.max_results)
                 state.consecutive_failures = 0
+                if self.cache is not None:
+                    await self.cache.put(provider.name, event, candidates)
                 return candidates, None
         except (TimeoutError, httpx.TimeoutException):
             failure = ProviderFailure("timeout", retryable=True)
@@ -271,6 +321,50 @@ class GdeltDiscovery(_HttpDiscovery):
         return tuple(candidates)
 
 
+class NewsDataDiscovery(_HttpDiscovery):
+    """Optional 12h-delayed NewsData.io free-tier fallback (metadata only)."""
+
+    name = "newsdata"
+    URL = "https://newsdata.io/api/1/latest"
+
+    def __init__(self, client: httpx.AsyncClient, *, api_key: str):
+        super().__init__(client)
+        if not api_key.strip():
+            raise ValueError("NewsData API key is required")
+        self._api_key = api_key
+
+    def can_search(self, event: EventQuery) -> bool:
+        return not (
+            event.occurred_before is not None
+            and _utc(event.occurred_before) < datetime.now(UTC) - timedelta(hours=48)
+        )
+
+    async def discover(self, event: EventQuery, limit: int) -> tuple[DiscoveredArticle, ...]:
+        query = _query(event)
+        if not query:
+            return ()
+        body = _json_object(await self._get(
+            self.URL,
+            {"q": query[:512], "language": "pl", "size": min(limit, 10)},
+            {"X-ACCESS-KEY": self._api_key},
+        ))
+        if body.get("status") != "success" or not isinstance(body.get("results"), list):
+            raise ProviderFailure(MALFORMED, retryable=False)
+        candidates = []
+        for row in body["results"]:
+            if not isinstance(row, dict):
+                continue
+            candidate = _candidate(
+                self.name, row.get("link"), row.get("title"), row.get("source_name"),
+                _timestamp(row.get("pubDate"), datetime.fromisoformat),
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+                if len(candidates) >= limit:
+                    break
+        return tuple(candidates)
+
+
 class FactCheckDiscovery(_HttpDiscovery):
     name = "google_fact_check"
     URL = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
@@ -315,10 +409,32 @@ class FactCheckDiscovery(_HttpDiscovery):
         return tuple(candidates)
 
 
+_QUERY_STOPWORDS = {
+    "od", "do", "dla", "oraz", "jest", "była", "było", "roku", "dnia",
+    "we", "na", "pod", "po", "się", "taki", "także", "który", "która",
+}
+
+
 def _query(event: EventQuery) -> str:
-    values = (event.query_text, *event.entities, event.location or "")
-    terms = dict.fromkeys(WORDS.findall(" ".join(values)))
-    return " ".join(terms)[:256].rstrip()
+    # External search works better with event anchors than with whole sentences.
+    # This is still untrusted input, and will be sent only on explicit opt-in.
+    values = (*event.entities, event.location or "", event.query_text)
+    terms = dict.fromkeys(
+        word for word in WORDS.findall(" ".join(values))
+        if len(word) > 2 and word.casefold() not in _QUERY_STOPWORDS
+    )
+    return " ".join(list(terms)[:10])[:256].rstrip()
+
+
+def cache_key(provider: str, event: EventQuery) -> str:
+    """Hash public search anchors and date window, not the original submitted text."""
+    content = json.dumps(
+        [provider, _query(event),
+         event.occurred_after.isoformat() if event.occurred_after else None,
+         event.occurred_before.isoformat() if event.occurred_before else None],
+        ensure_ascii=False, separators=(",", ":"),
+    )
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 def _candidate(

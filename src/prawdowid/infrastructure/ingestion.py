@@ -20,6 +20,7 @@ from prawdowid.infrastructure.corpus import (
     chunks,
     digest,
     store_article,
+    store_discovered_metadata,
 )
 from prawdowid.infrastructure.db_models import documents, jobs, passages, sources
 from prawdowid.infrastructure.job_queue import insert_job
@@ -136,7 +137,26 @@ class CorpusAccess:
                 await asyncio.sleep(0.2)
 
     async def enrich(self, candidates: Sequence[DocumentCandidate]) -> bool:
+        # Discovery providers return metadata; never fetch arbitrary publisher
+        # text without explicit, domain-specific reuse approval.
+        domains = {urlsplit(item.canonical_url).hostname for item in candidates}
         async with self.sessions.begin() as session:
+            # Store links even from unapproved publishers; never store their text.
+            for item in candidates[:20]:
+                await store_discovered_metadata(session, item)
+            permitted = set(await session.scalars(
+                sa.select(sources.c.domain).where(
+                    sources.c.domain.in_(domains),
+                    sources.c.enabled.is_(True),
+                    sources.c.approved_at.is_not(None),
+                    sources.c.license_label.is_not(None),
+                    sources.c.license_label != "",
+                )
+            ))
+            eligible = [
+                item for item in candidates
+                if urlsplit(item.canonical_url).hostname in permitted
+            ][:4]
             job_ids = [
                 await enqueue_article(
                     session,
@@ -144,12 +164,12 @@ class CorpusAccess:
                     title=item.headline,
                     publisher=item.publisher,
                 )
-                for item in sorted(candidates[:4], key=lambda item: item.canonical_url)
+                for item in eligible
             ]
         if not job_ids:
             return False
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + 4
+        deadline = loop.time() + 10
         while loop.time() < deadline:
             async with self.sessions() as session:
                 states = (

@@ -16,6 +16,8 @@ const rowText = document.querySelector("#field-text");
 const rowUrl = document.querySelector("#field-url");
 const inputText = document.querySelector("#content-text");
 const inputUrl = document.querySelector("#content-url");
+const webSearchChoice = document.querySelector("#web-search-choice");
+const webSearch = document.querySelector("#enable-web-search");
 
 const analysisIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const dateFormat = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" });
@@ -124,20 +126,195 @@ function appendList(title, items, render) {
   reportContent.append(list);
 }
 
+// Highlight only text spans returned by our extractor, never model-generated
+// paraphrases. The claim card contains the full evidence and caveats.
+function renderAnnotations(data) {
+  if (typeof data.annotated_text !== "string" || !data.annotated_text) return;
+  const original = data.annotated_text;
+  const heading = element("h3", "Zaznaczone twierdzenia");
+  const intro = element("p", "Najedź na zaznaczony fragment lub użyj klawiatury. Kliknij, aby przejść do analizy.", "minor");
+  const block = element("div", null, "annotated-source");
+  const spans = rows(data.claims)
+    .filter((claim) => Number.isInteger(claim.span_start) && Number.isInteger(claim.span_end))
+    .sort((a, b) => a.span_start - b.span_start);
+  let cursor = 0;
+  for (const claim of spans) {
+    const start = claim.span_start;
+    const end = claim.span_end;
+    if (start < cursor || end > original.length || end <= start) continue;
+    if (original.slice(start, end) !== claim.text) continue;
+    block.append(document.createTextNode(original.slice(cursor, start)));
+    const button = element("button", null, "inline-claim");
+    button.type = "button";
+    button.dataset.kind = claim.claim_type === "opinion" ? "opinion" :
+      claim.claim_type === "uncertain" ? "uncertain" : claim.verdict;
+    button.append(document.createTextNode(claim.text));
+    const tooltip = element("span", null, "claim-tooltip");
+    const kindLabel = claim.claim_type === "opinion" ? "Opinia" :
+      claim.claim_type === "uncertain" ? "Niejasna klasyfikacja" :
+      verdictLabels[claim.verdict] || "Nieokreślone";
+    const explanation = [kindLabel,
+      claim.evidence_scope === "private" ? "Wymaga prywatnych danych" : "",
+      claim.rationale]
+      .filter(Boolean).join(" — ");
+    tooltip.textContent = explanation;
+    tooltip.setAttribute("role", "tooltip");
+    button.append(tooltip);
+    button.setAttribute("aria-label", claim.text + ". " + explanation);
+    button.addEventListener("click", () => {
+      const target = document.getElementById("claim-detail-" + claim.claim_id);
+      if (target) { target.scrollIntoView({ behavior: "smooth", block: "center" }); target.focus(); }
+    });
+    block.append(button);
+    cursor = end;
+  }
+  block.append(document.createTextNode(original.slice(cursor)));
+  reportContent.append(heading, intro, block);
+}
+
+function renderDiscovery(data) {
+  const search = data.search;
+  if (!search || typeof search !== "object") return;
+  const header = element("h3", "Wyszukiwanie źródeł online");
+  const line = element("p", "", "minor");
+  const labels = {
+    disabled: "Nie włączono wyszukiwania online.",
+    skipped_no_public_claims: "Nie wyszukiwano: brak twierdzeń nadających się do publicznego sprawdzenia.",
+    sufficient_local_sources: "Znaleziono co najmniej dwa lokalne źródła; pominięto nową kwerendę.",
+    providers_partial: "Wyszukiwanie uruchomiono; część dostawców zgłosiła błąd.",
+    completed: "Wyszukiwanie wykonane.",
+  };
+  line.textContent = (labels[search.status] || "Stan wyszukiwania nieznany.")
+    + (search.attempted ? " Otrzymane publikacje: " + (search.candidates_found || 0) + "." : "");
+  reportContent.append(header, line);
+  const errors = rows(search.provider_errors);
+  if (errors.length) {
+    const list = element("ul", null, "limitations");
+    list.append(...errors.map((error) => element("li", error.provider + ": " + error.code)));
+    reportContent.append(list);
+  }
+}
+
+function renderCoverage(data) {
+  const coverage = data.coverage;
+  if (!coverage || typeof coverage !== "object") return;
+  const header = element("h3", "Przegląd relacji mediów");
+  const card = element("section", null, "coverage-overview");
+  const evidence = rows(coverage.evidence_publishers);
+  const topic = rows(coverage.topic_publishers);
+  const stats = element("div", null, "coverage-stats");
+  for (const [value, label] of [
+    [evidence.length, "Wydawcy z zacytowanym dowodem"],
+    [topic.length, "Wydawcy znalezieni dla tematu"],
+  ]) {
+    const cell = element("div", null, "coverage-stat");
+    cell.append(element("strong", String(value)), element("span", label));
+    stats.append(cell);
+  }
+  card.append(stats);
+  if (coverage.note) card.append(element("p", coverage.note, "minor"));
+  const citedFactChecks = rows(coverage.fact_check_evidence_publishers);
+  if (citedFactChecks.length) {
+    card.append(element("p", "Zacytowane serwisy fact-checkingowe: "
+      + citedFactChecks.join(", ") + ". Każdą ocenę należy zestawić z oryginalnym dowodem.", "minor"));
+  }
+  const factChecks = rows(coverage.fact_check_candidates);
+  if (factChecks.length) {
+    card.append(element("h4", "Znalezione materiały fact-checkingowe (jeszcze nie zweryfikowane)"));
+    const list = element("ul", null, "limitations");
+    for (const entry of factChecks) {
+      const li = element("li");
+      const url = safeLink(entry.url);
+      if (url) {
+        const link = element("a", entry.title || entry.publisher);
+        link.href = url.href;
+        link.rel = "noreferrer";
+        li.append(link);
+      } else li.textContent = entry.title || entry.publisher;
+      list.append(li);
+    }
+    card.append(list);
+  }
+  reportContent.append(header, card);
+}
+
+function renderPriorFactChecks(data) {
+  const reviews = rows(data.fact_checks);
+  const errors = rows(data.fact_check_errors);
+  if (!reviews.length && !errors.length) return;
+  reportContent.append(element("h3", "Opublikowane analizy fact-checkingowe"));
+  reportContent.append(element("p", "Wyszukane oceny innych redakcji. Nie ustalono jeszcze, czy dotyczą dokładnie tej samej tezy. Nie są automatycznym dowodem ani oceną PRAWDOWID.", "minor"));
+  const claims = new Map(rows(data.claims).map((c) => [c.claim_id, c.text]));
+  const list = element("ul", null, "report-list");
+  for (const entry of reviews) {
+    const item = element("li");
+    const url = safeLink(entry.url);
+    if (url) {
+      const anchor = element("a", entry.title || entry.publisher);
+      anchor.href = url.href;
+      anchor.rel = "noopener noreferrer";
+      item.append(anchor);
+    } else item.append(element("span", entry.title || entry.publisher));
+    item.append(element("p", "Dotyczy wyszukania dla: " + (claims.get(entry.claim_id) || entry.claim_id), "minor"));
+    if (entry.reviewed_claim) item.append(element("p", "Teza oceniana przez źródło: " + entry.reviewed_claim));
+    if (entry.published_rating) item.append(element("p", "Ocena wydawcy: " + entry.published_rating, "minor"));
+    item.append(element("p", entry.publisher + " · dopasowanie do tezy niepotwierdzone", "minor"));
+    list.append(item);
+  }
+  if (reviews.length) reportContent.append(list);
+  if (errors.length) reportContent.append(element("p", "Część usług fact-checkingowych była niedostępna.", "minor"));
+}
+
 function showReport(data, shareCandidate = false) {
   const sources = rows(data.sources).map((source, index) => ({ source, anchor: "source-" + index }));
   const byId = new Map(sources.map((entry) => [entry.source.source_id, entry]));
   reportContent.replaceChildren();
+  renderAnnotations(data);
+  renderDiscovery(data);
 
   appendList("Twierdzenia", rows(data.claims), (claim) => {
     const item = element("li");
+    item.id = "claim-detail-" + claim.claim_id;
+    item.tabIndex = -1;
     const heading = element("div", null, "claim-heading");
-    const badge = element("span", verdictLabels[claim.verdict] || "Brak oceny", "verdict");
-    badge.dataset.kind = claim.verdict;
+    const verdictLabel = claim.claim_type === "opinion" ? "Opinia" :
+      claim.claim_type === "uncertain" ? "Klasyfikacja niepewna" :
+      verdictLabels[claim.verdict] || "Brak oceny";
+    const badge = element("span", verdictLabel, "verdict");
+    badge.dataset.kind = claim.claim_type === "opinion" ? "opinion" :
+      claim.claim_type === "uncertain" ? "uncertain" : claim.verdict;
     heading.append(element("h4", claim.text), badge);
     item.append(heading);
     if (claim.rationale) item.append(element("p", claim.rationale));
+    const typeText = {
+      factual: "Faktograficzne", opinion: "Opinia", fragment: "Fragment / brak tezy",
+      uncertain: "Wymaga przeglądu klasyfikacji",
+    }[claim.claim_type] || "Nieustalone";
+    item.append(element("p", "Rodzaj: " + typeText, "minor"));
+    if (claim.empirical_test) item.append(element("p", "Możliwy test: " + claim.empirical_test, "minor"));
+    if (claim.classification_reason) item.append(element("p", "Uzasadnienie rodzaju: " + claim.classification_reason, "minor"));
+    if (claim.classification_reviewed) item.append(element("p", "Klasyfikację poddano drugiej ocenie semantycznej.", "minor"));
+    if (claim.evidence_scope === "private") {
+      item.append(element("p", "Zakres: prywatny przypadek — brak publicznej weryfikacji.", "minor"));
+    }
+    if (rows(claim.aliases).length) {
+      item.append(element("p", "Powiązane nazwy: " + claim.aliases.join(" · "), "minor"));
+    }
+    for (const assumption of rows(claim.assumptions)) {
+      item.append(element("p", "Założenie / ograniczenie: " + assumption, "minor"));
+    }
     const references = rows(claim.evidence_source_ids).map((id) => byId.get(id)).filter(Boolean);
+    item.append(element("p", "Liczba zacytowanych fragmentów: " + references.length, "minor"));
+    const discovered = Number(claim.topic_links_count) || 0;
+    if (discovered) item.append(element("p", "Publikacje znalezione na podobny temat: "
+      + discovered + " (nie są automatycznie dowodem).", "minor"));
+    const searchState = rows(data.search?.per_claim).find((row) => row.claim_id === claim.claim_id);
+    const stateLabels = {
+      attempted: "Wykonano kwerendę online dla tej tezy.",
+      sufficient_local_sources: "Wykorzystano dostępne źródła lokalne.",
+      budget_exhausted: "Pominięto wyszukanie z powodu limitu kwerend.",
+    };
+    if (searchState) item.append(element("p", stateLabels[searchState.status] || "", "minor"));
     if (references.length) {
       const list = element("ul", null, "references");
       for (const entry of references) {
@@ -153,11 +330,35 @@ function showReport(data, shareCandidate = false) {
   appendList("Różnice w relacjach", rows(data.narratives), (frame) => {
     const item = element("li");
     const entry = byId.get(frame.source_id);
+    const relatedClaim = rows(data.claims).find((claim) => claim.claim_id === frame.claim_id);
+    if (relatedClaim) item.append(element("p", "Dotyczy tezy: " + relatedClaim.text, "minor"));
     const headline = rows(data.articles).find((article) => article.source_id === frame.source_id);
     if (headline?.headline) item.append(element("h4", headline.headline));
     if (entry) item.append(sourceReference(entry));
     for (const emphasis of rows(frame.emphasis)) item.append(element("blockquote", emphasis));
     if (frame.caveat) item.append(element("p", frame.caveat, "minor"));
+    return item;
+  });
+
+  renderCoverage(data);
+  renderPriorFactChecks(data);
+
+  appendList("Znalezione w sieci (metadane, nie dowody)", rows(data.discovered_links), (found) => {
+    const item = element("li");
+    const title = found.title || found.publisher || "Artykuł";
+    const url = safeLink(found.url);
+    if (url) {
+      const link = element("a", title);
+      link.href = url.href;
+      link.rel = "noreferrer";
+      item.append(link);
+    } else {
+      item.append(element("span", title));
+    }
+    if (found.publisher) {
+      const label = found.category === "fact_check" ? " — serwis fact-checkingowy" : "";
+      item.append(element("p", found.publisher + label, "minor"));
+    }
     return item;
   });
 
@@ -178,7 +379,11 @@ function showReport(data, shareCandidate = false) {
       heading.textContent = title;
     }
     item.append(heading);
-    if (source.publisher) item.append(element("p", source.publisher));
+    if (source.publisher) {
+      const tag = source.source_type === "factcheck" ? " — fact-checking"
+        : source.source_type === "primary" ? " — źródło pierwotne" : "";
+      item.append(element("p", source.publisher + tag));
+    }
     item.append(timestamp("Publikacja", source.published_at), timestamp("Pobranie", source.fetched_at));
     if (source.exact_quote) item.append(element("blockquote", source.exact_quote));
     return item;
@@ -216,8 +421,8 @@ async function fetchJson(path, options = {}, receiveHeaders) {
 }
 
 async function poll(id, result) {
-  const deadline = Date.now() + 45_000;
-  for (let count = 0; pendingStates.has(result.status) && count < 30; count += 1) {
+  const deadline = Date.now() + 120_000;
+  for (let count = 0; pendingStates.has(result.status) && count < 90; count += 1) {
     if (currentAnalysisId !== id) return null;
     const delay = Math.min(4000, Math.max(500, (Number(result.retry_after_seconds) || 1) * 1000));
     if (Date.now() + delay >= deadline) break;
@@ -238,6 +443,8 @@ function syncInput() {
   rowUrl.hidden = !isUrl;
   inputText.disabled = isUrl;
   inputUrl.disabled = !isUrl;
+  webSearchChoice.hidden = isUrl;
+  webSearch.disabled = isUrl;
   clearFieldError();
 }
 
@@ -268,7 +475,9 @@ form.addEventListener("submit", async (event) => {
     let result = await fetchJson("/api/v1/analyses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, content, language: "pl" }),
+      body: JSON.stringify({
+        kind, content, language: "pl", web_search: kind === "text" && webSearch.checked,
+      }),
     }, (headers) => { deleteToken = headers.get(deleteHeader); });
     if (typeof result.analysis_id !== "string" || !analysisIdPattern.test(result.analysis_id)) {
       throw new Error("unavailable");

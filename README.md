@@ -21,6 +21,8 @@ Run `./scripts/setup.sh --skip-db` for the Codex workspace and locked Python dep
 
 ### Run the application
 
+With your local `.env` configured, run `./scripts/start.sh` to start PostgreSQL, apply migrations, and launch the API and worker. Ctrl+C stops both Python processes and leaves PostgreSQL running.
+
 Use the existing Python 3.12 environment, Docker Compose PostgreSQL 16 with pgvector, and a local Ollama instance serving `qwen3:4b`.
 
 ```bash
@@ -44,5 +46,7 @@ uv run --locked python scripts/catalog.py approve www.gov.pl \
 ```
 
 For hybrid retrieval, sync the locked `ml` extra and prefetch the official multilingual-E5-small snapshot at revision `fd1525a9fd15316a2d503bf26ab031a61d056e98` into the Hugging Face cache. The worker only loads local safetensors and uses full-text search if embeddings are unavailable. [E5 model card](https://huggingface.co/intfloat/multilingual-e5-small)
+
+To enable OpenRouter for approved public articles, see [worker provider configuration](docs/PROVIDERS.md#openrouter-for-public-articles).
 
 Private text searches the local corpus and uses the configured Ollama endpoint. Keep the endpoint local for private input. The random analysis ID grants read access to a private report, so protect it as a credential and keep access logs disabled. Only the original response includes a separate deletion token. Defaults are a 15-minute retention window for text and 24 hours for URL analyses, configurable with `TEXT_RETENTION_MINUTES` and `ANALYSIS_RETENTION_HOURS`. See the evaluation runbook for measured results and competition gaps. [Evaluation](docs/EVALUATION.md)

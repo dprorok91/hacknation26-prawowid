@@ -25,6 +25,11 @@
       "default": "pl",
       "title": "Language",
       "type": "string"
+    },
+    "web_search": {
+      "default": false,
+      "title": "Web Search",
+      "type": "boolean"
     }
   },
   "required": [

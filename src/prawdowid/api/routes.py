@@ -67,14 +67,27 @@ Service = Annotated[AnalysisService, Depends(analysis_service)]
 @router.post(
     "/analyses", status_code=202, response_model=AnalysisResponse, responses=SUBMISSION_ERRORS
 )
+async def create_analysis(
+    request: AnalysisRequest, response: Response, service: Service
+) -> AnalysisResponse:
+    public_url = request.kind == "url" and "?" not in request.content and "#" not in request.content
+    return await _submit(request, response, service, public_model_allowed=public_url)
+
+
 @router.post(
     "/adapters/message-demo",
     status_code=202,
     response_model=AnalysisResponse,
     responses=SUBMISSION_ERRORS,
 )
-async def create_analysis(
+async def create_message_analysis(
     request: AnalysisRequest, response: Response, service: Service
+) -> AnalysisResponse:
+    return await _submit(request, response, service, public_model_allowed=False)
+
+
+async def _submit(
+    request: AnalysisRequest, response: Response, service: Service, *, public_model_allowed: bool
 ) -> AnalysisResponse:
     words = request.content.split()
     name_only = len(words) <= 2 and all(
@@ -85,7 +98,14 @@ async def create_analysis(
         raise AnalysisError(
             ErrorCode.NEEDS_CLARIFICATION, "Provide a complete, checkable statement."
         )
-    result = await service.submit(Submission(request.kind.value, request.content))
+    result = await service.submit(
+        Submission(
+            request.kind.value,
+            request.content,
+            web_search=request.web_search,
+            public_model_allowed=public_model_allowed,
+        )
+    )
     response.headers["Location"] = f"/api/v1/analyses/{result.analysis_id}"
     if result.retry_after_seconds is not None:
         response.headers["Retry-After"] = str(result.retry_after_seconds)

@@ -116,3 +116,30 @@ def test_channels_share_submission_and_polling_contract():
     sources = client.get("/api/v1/analyses/stored/sources")
     assert sources.json()[0]["source_id"] == "s1"
     assert client.get("/api/v1/analyses/absent").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("route", "body", "eligible_channel"),
+    [
+        ("analyses", {"kind": "url", "content": "https://example.org/report"}, True),
+        ("adapters/message-demo", {"kind": "url", "content": "https://example.org/report"}, False),
+        ("analyses", {"kind": "url", "content": "https://example.org/report?utm_id=1"}, False),
+        ("analyses", {"kind": "url", "content": "https://example.org/report#private"}, False),
+        ("analyses", {"kind": "text", "content": "Moje prywatne dane", "web_search": True}, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_hosted_inference_permission_is_server_derived(route, body, eligible_channel):
+    import httpx
+
+    class Capture:
+        async def submit(self, submission):
+            assert submission.public_model_allowed is eligible_channel
+            return AnalysisResponse(analysis_id="captured", status="queued")
+
+    transport = httpx.ASGITransport(app=create_app(Capture()))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        path = f"/api/v1/{route}"
+        assert (await client.post(path, json=body)).status_code == 202
+        injected = await client.post(path, json={**body, "public_model_allowed": True})
+        assert injected.status_code == 422

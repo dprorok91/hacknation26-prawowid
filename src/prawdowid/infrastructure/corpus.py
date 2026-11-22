@@ -3,7 +3,7 @@
 import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from prawdowid.domain.models import DocumentCandidate
 from prawdowid.domain.urls import canonical_url
 from prawdowid.infrastructure.db_models import document_versions, documents, passages, sources
 
@@ -172,3 +173,44 @@ async def store_article(
         if rows:
             await session.execute(sa.insert(passages), rows)
     return document_id
+
+
+async def store_discovered_metadata(session: AsyncSession, item: DocumentCandidate) -> str | None:
+    """Save a discovered link; NEVER replace previously approved indexed text.
+
+    Discovery is untrusted metadata, not citable evidence. Both insertions are
+    idempotent; fetch workers can independently promote eligible documents.
+    """
+    url = canonical_url(item.canonical_url)
+    domain = urlsplit(url).hostname
+    await session.execute(
+        insert(sources).values(
+            domain=domain, display_name=(item.publisher or domain)[:500], source_type="news"
+        ).on_conflict_do_nothing(index_elements=[sources.c.domain])
+    )
+    source_id = await session.scalar(sa.select(sources.c.id).where(sources.c.domain == domain))
+    document_id = str(uuid4())
+    fetched = datetime.now(UTC)
+    inserted = await session.scalar(
+        insert(documents).values(
+            id=document_id, source_id=source_id,
+            canonical_url=url, url_hash=digest(url),
+            title=(item.headline or "Untitled")[:500],
+            published_at=item.published_at,
+            fetched_at=fetched, retrieval_status="metadata_only",
+            expires_at=fetched + timedelta(days=7),
+        ).on_conflict_do_nothing(index_elements=[documents.c.canonical_url])
+        .returning(documents.c.id)
+    )
+    if inserted is None:
+        return await session.scalar(
+            sa.select(documents.c.id).where(documents.c.canonical_url == url)
+        )
+    await session.execute(sa.insert(document_versions).values(
+        document_id=inserted, content_version=1,
+        title=(item.headline or "Untitled")[:500],
+        published_at=item.published_at,
+        fetched_at=fetched, retrieval_status="metadata_only",
+        expires_at=fetched + timedelta(days=7),
+    ))
+    return inserted

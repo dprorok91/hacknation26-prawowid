@@ -45,3 +45,12 @@ def canonical_url(value: str) -> str:
         if not (key.lower().startswith("utm_") or key.lower() in TRACKING_NAMES)
     ]
     return urlunsplit((parts.scheme, netloc, parts.path or "/", urlencode(query), ""))
+
+
+def eligible_model_url(value: str) -> bool:
+    """Only plain HTTP article URLs may cross the hosted-model boundary after source approval."""
+    try:
+        parts = parse_http_url(value)
+        return parts.port in (None, 80, 443) and "?" not in value and "#" not in value
+    except ValueError:
+        return False

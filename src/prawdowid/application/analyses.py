@@ -30,6 +30,8 @@ class Submission:
     kind: str
     content: str
     queued_at: datetime | None = None
+    web_search: bool = False
+    public_model_allowed: bool = False
 
 
 @dataclass(frozen=True)

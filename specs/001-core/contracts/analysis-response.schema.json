@@ -41,6 +41,45 @@
           "title": "Limitations",
           "type": "array"
         },
+        "discovered_links": {
+          "items": {
+            "$ref": "#/$defs/DiscoveredLink"
+          },
+          "title": "Discovered Links",
+          "type": "array"
+        },
+        "search": {
+          "$ref": "#/$defs/DiscoveryStatus"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "fact_checks": {
+          "items": {
+            "$ref": "#/$defs/PriorFactCheck"
+          },
+          "title": "Fact Checks",
+          "type": "array"
+        },
+        "fact_check_errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fact Check Errors",
+          "type": "array"
+        },
+        "annotated_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Annotated Text"
+        },
         "source_snapshot": {
           "anyOf": [
             {
@@ -98,6 +137,101 @@
           "title": "Text",
           "type": "string"
         },
+        "claim_type": {
+          "default": "factual",
+          "enum": [
+            "factual",
+            "opinion",
+            "fragment",
+            "uncertain"
+          ],
+          "title": "Claim Type",
+          "type": "string"
+        },
+        "evidence_scope": {
+          "default": "unknown",
+          "enum": [
+            "public",
+            "private",
+            "unknown"
+          ],
+          "title": "Evidence Scope",
+          "type": "string"
+        },
+        "span_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Span Start"
+        },
+        "span_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Span End"
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "topic_links_count": {
+          "default": 0,
+          "title": "Topic Links Count",
+          "type": "integer"
+        },
+        "empirical_test": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Empirical Test"
+        },
+        "classification_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Classification Reason"
+        },
+        "classification_reviewed": {
+          "default": false,
+          "title": "Classification Reviewed",
+          "type": "boolean"
+        },
         "verdict": {
           "$ref": "#/$defs/Verdict"
         },
@@ -129,8 +263,224 @@
       "title": "ClaimResult",
       "type": "object"
     },
+    "ClaimSearchStatus": {
+      "properties": {
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "attempted",
+            "sufficient_local_sources",
+            "budget_exhausted"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_id",
+        "status"
+      ],
+      "title": "ClaimSearchStatus",
+      "type": "object"
+    },
+    "Coverage": {
+      "properties": {
+        "evidence_publishers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Publishers",
+          "type": "array"
+        },
+        "fact_check_evidence_publishers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fact Check Evidence Publishers",
+          "type": "array"
+        },
+        "topic_publishers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Topic Publishers",
+          "type": "array"
+        },
+        "fact_check_candidates": {
+          "items": {
+            "$ref": "#/$defs/DiscoveredLink"
+          },
+          "title": "Fact Check Candidates",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "DiscoveredLink": {
+      "description": "Public discovery metadata, never treated as verified evidence.",
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "category": {
+          "default": "news",
+          "enum": [
+            "news",
+            "fact_check"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "claim_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Claim Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "publisher",
+        "url",
+        "provider"
+      ],
+      "title": "DiscoveredLink",
+      "type": "object"
+    },
+    "DiscoveryProviderError": {
+      "properties": {
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        }
+      },
+      "required": [
+        "provider",
+        "code"
+      ],
+      "title": "DiscoveryProviderError",
+      "type": "object"
+    },
+    "DiscoveryStatus": {
+      "properties": {
+        "requested": {
+          "default": false,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "attempted": {
+          "default": false,
+          "title": "Attempted",
+          "type": "boolean"
+        },
+        "status": {
+          "default": "disabled",
+          "enum": [
+            "disabled",
+            "skipped_no_public_claims",
+            "sufficient_local_sources",
+            "providers_partial",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "candidates_found": {
+          "default": 0,
+          "title": "Candidates Found",
+          "type": "integer"
+        },
+        "provider_errors": {
+          "items": {
+            "$ref": "#/$defs/DiscoveryProviderError"
+          },
+          "title": "Provider Errors",
+          "type": "array"
+        },
+        "per_claim": {
+          "items": {
+            "$ref": "#/$defs/ClaimSearchStatus"
+          },
+          "title": "Per Claim",
+          "type": "array"
+        }
+      },
+      "title": "DiscoveryStatus",
+      "type": "object"
+    },
     "MediaFrame": {
       "properties": {
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
         "source_id": {
           "title": "Source Id",
           "type": "string"
@@ -175,6 +525,82 @@
       "title": "MediaFrame",
       "type": "object"
     },
+    "PriorFactCheck": {
+      "description": "Published third-party judgment, NOT a PRAWDOWID verdict or evidence citation.",
+      "properties": {
+        "claim_id": {
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "reviewed_claim": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed Claim"
+        },
+        "published_rating": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published Rating"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed At"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "match_status": {
+          "const": "not_assessed",
+          "default": "not_assessed",
+          "title": "Match Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_id",
+        "publisher",
+        "title",
+        "url",
+        "provider"
+      ],
+      "title": "PriorFactCheck",
+      "type": "object"
+    },
     "SourceReference": {
       "properties": {
         "source_id": {
@@ -195,6 +621,16 @@
         },
         "publisher": {
           "title": "Publisher",
+          "type": "string"
+        },
+        "source_type": {
+          "default": "news",
+          "enum": [
+            "news",
+            "primary",
+            "factcheck"
+          ],
+          "title": "Source Type",
           "type": "string"
         },
         "title": {

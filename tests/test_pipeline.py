@@ -8,6 +8,7 @@ from uuid import uuid4
 import httpx
 import pytest
 import sqlalchemy as sa
+from pydantic import SecretStr
 
 from prawdowid.application.evidence import EvidenceService
 from prawdowid.application.pipeline import AnalysisPipeline
@@ -33,9 +34,11 @@ from prawdowid.infrastructure.discovery import DiscoveryReport
 from prawdowid.infrastructure.ingestion import FETCH_URL, ArticleIngestion, CorpusAccess
 from prawdowid.infrastructure.job_queue import PostgresJobQueue
 from prawdowid.infrastructure.ollama import OllamaClient
+from prawdowid.infrastructure.openrouter import OpenRouterClient
 from prawdowid.infrastructure.retrieval import PostgresEvidenceRetriever
 from prawdowid.infrastructure.safe_web import SafeWeb
 from prawdowid.main import create_app
+from prawdowid.worker import select_analysis_model
 
 
 class EmptyDiscovery:
@@ -61,6 +64,8 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
     database = create_database(dsn)
     analysis_ids = []
 
+    hosted_tasks = []
+
     def respond(request):
         payload = json.loads(request.content)
         prompt = json.loads(payload["messages"][1]["content"])
@@ -70,6 +75,12 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
                 "entities": [marker],
                 "claims": [{"text": phrase, "kind": "verifiable"}],
             }
+        elif prompt["task"] == "assess":
+            answer = {
+                "kind": "verifiable", "scope": "public",
+                "empirical_test": "Sprawdzić komunikat o otwarciu mostu.",
+                "reason": "Otwarcie mostu jest zdarzeniem publicznym.",
+            }
         else:
             passage = prompt["passages"][0]
             answer = {
@@ -77,9 +88,17 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
                     {"passage_id": passage["passage_id"], "quote": phrase, "relation": "supports"}
                 ]
             }
+        if request.url.host == "openrouter.ai":
+            hosted_tasks.append(prompt["task"])
+            return httpx.Response(200, json={
+                "choices": [{"finish_reason": "stop", "message": {
+                    "role": "assistant", "content": json.dumps(answer)
+                }}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 3, "cost": 0.0002},
+            })
         return httpx.Response(
             200,
-            json={"done": True, "message": {"role": "assistant", "content": json.dumps(answer)}},
+            json={"done": True, "prompt_eval_count": 4, "eval_count": 2, "message": {"role": "assistant", "content": json.dumps(answer)}},
         )
 
     try:
@@ -111,8 +130,10 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
             httpx.AsyncClient(transport=httpx.MockTransport(respond)) as model_client,
             httpx.AsyncClient(transport=controller, base_url="http://testserver") as client,
         ):
+            local = OllamaClient(model_client, "http://ollama", "qwen3:4b")
+            hosted = OpenRouterClient(model_client, SecretStr("test-only"), "openai/gpt-4.1-mini")
             pipeline = AnalysisPipeline(
-                EvidenceService(OllamaClient(model_client, "http://ollama", "qwen3:4b")),
+                EvidenceService(local),
                 PostgresEvidenceRetriever(database.sessions),
                 EmptyDiscovery(),
                 CorpusAccess(database.sessions),
@@ -122,16 +143,21 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
                 async with database.sessions.begin() as session:
                     request = await claim_analysis_input(session, lease)
                 analysis_id = lease.payload["analysis_id"]
-                report = await pipeline.analyze(analysis_id, request)
+                model, article = await select_analysis_model(request, pipeline.corpus, local, hosted)
+                with model.measure_usage() as usage:
+                    report = await pipeline.analyze(
+                        analysis_id, request, article=article, evidence=EvidenceService(model)
+                    )
 
                 async def effect(session):
                     await finish_analysis(
                         session,
                         analysis_id,
                         report=report,
-                        model_name="fixture",
-                        tokens_in=12,
-                        tokens_out=5,
+                        model_name="qwen3:4b" if model is local else "openai/gpt-4.1-mini",
+                        tokens_in=usage.tokens_in,
+                        tokens_out=usage.tokens_out,
+                        estimated_cost_usd=usage.cost_usd,
                     )
 
                 return effect
@@ -173,7 +199,9 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
             private_url = f"/api/v1/analyses/{analysis_ids[0]}"
             audit = await client.get(private_url + "/audit")
             assert audit.json()["tokens_in"] == 12
-            assert audit.json()["tokens_out"] == 5
+            assert audit.json()["tokens_out"] == 6
+            assert audit.json()["estimated_cost_usd"] == 0
+            assert hosted_tasks == []
             assert phrase not in audit.text
             assert (await client.delete(private_url)).status_code == 404
             assert (
@@ -210,6 +238,11 @@ async def test_evidence_backed_api_and_message_demo_use_same_snapshot():
                 )
                 assert await fetch.run_once()
             assert await worker.run_once()
+            assert hosted_tasks == ["extract", "assess", "verify"]
+            public_audit = (await client.get(public.headers["location"] + "/audit")).json()
+            assert public_audit["model_name"] == "openai/gpt-4.1-mini"
+            assert public_audit["tokens_in"] == 30
+            assert public_audit["estimated_cost_usd"] == pytest.approx(0.0006)
             shared = f"/api/v1/public-reports/{public_id}"
             assert (await client.get(shared)).json()["status"] == "completed"
             async with database.sessions.begin() as session:

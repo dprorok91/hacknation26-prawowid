@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "narrative_frames",
     "jobs",
     "audit_events",
+    "discovery_cache",
+    "provider_daily_usage",
 }
 
 

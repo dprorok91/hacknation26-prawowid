@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from prawdowid.domain.models import Claim, EventQuery, EvidencePassage
 from prawdowid.domain.ports import Embedder
+from prawdowid.domain.semantics import augmented_tokens
 from prawdowid.infrastructure.db_models import document_versions, documents, passages, sources
 from prawdowid.infrastructure.embeddings import EMBEDDING_DIMENSIONS, EmbeddingUnavailable
 
@@ -45,7 +46,8 @@ class SearchResult:
 
 
 def _tokens(text: str) -> list[str]:
-    return WORDS.findall(unicodedata.normalize("NFC", text).casefold())
+    normalized = unicodedata.normalize("NFC", text).casefold()
+    return augmented_tokens(WORDS.findall(normalized), normalized)
 
 
 def _keywords(text: str) -> list[str]:
@@ -77,6 +79,22 @@ def matches_event(event: EventQuery, hit: RetrievedPassage) -> bool:
 
     anchors = location.union(*entities)
     action = {word for word in _keywords(event.query_text) if not word.isdecimal()} - anchors
+    # Keep distinct events distinct, even when "SCT" matches the full name.
+    # A proposal, an enactment and a referendum are not interchangeable.
+    actions = (
+        ("zapropon", "propon", "propozyc", "projekt"),
+        ("zmniejsz", "mniejsz", "ogranicz", "redukc"),
+        ("obowiązuj", "weszł", "wprowadz", "uruchom", "ruszył"),
+        ("referend", "głosowan"),
+    )
+    query_words = _tokens(event.query_text)
+    text_words = _tokens(f"{hit.title} {hit.exact_text}")
+    for group in actions:
+        if (
+            any(word.startswith(root) for word in query_words for root in group)
+            and not any(word.startswith(root) for word in text_words for root in group)
+        ):
+            return False
     return len(present & action) >= min(2, len(action))
 
 

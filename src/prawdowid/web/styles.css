@@ -214,6 +214,8 @@ a:hover { text-decoration-thickness: .14em; }
 .report-list > li:target { border: 2px solid var(--accent); }
 .report-list .claim-heading { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
 .verdict { background: #e3eee8; color: #1b5545; border-radius: .4rem; padding: .13rem .47rem; font-size: .8rem; font-weight: 750; }
+.verdict[data-kind="opinion"] { background: #e9e5f1; color: #53446c; }
+.verdict[data-kind="uncertain"] { background: #f5e9db; color: #70501b; }
 .verdict[data-kind="false"] { background: #f7e5e0; color: #82372b; }
 .verdict[data-kind="insufficient_evidence"], .verdict[data-kind="not_verifiable"] {
   background: #eeeae1; color: #50453a;
@@ -225,4 +227,95 @@ a:hover { text-decoration-thickness: .14em; }
   .workspace { grid-template-columns: 1fr; }
   .intro { min-block-size: 11rem; }
   .site-header { min-block-size: 3.6rem; }
+}
+
+/* Web search is an explicit, visible privacy opt-in, not a hidden radio. */
+.web-optin {
+  display: flex !important;
+  align-items: center;
+  gap: .65rem;
+  cursor: pointer;
+  margin-block-end: .35rem;
+  font-weight: 650;
+}
+.web-optin input[type="checkbox"] {
+  position: static;
+  width: 1.2rem;
+  height: 1.2rem;
+  opacity: 1;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.web-optin input:focus-visible { outline: 3px solid #998122; outline-offset: 3px; }
+
+.annotated-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: .7rem;
+  background: var(--paper);
+  line-height: 2.3;
+}
+.inline-claim {
+  position: relative;
+  display: inline;
+  margin: 0 .08em;
+  padding: .08em .16em;
+  min-block-size: auto;
+  font: inherit;
+  font-weight: 650;
+  line-height: inherit;
+  border-radius: .25rem;
+  border-bottom: 2px solid currentColor;
+  background: #deeee6;
+  color: #19513c;
+  white-space: normal;
+  text-align: left;
+}
+.inline-claim[data-kind="opinion"] { background: #eee8f8; color: #53446c; }
+.inline-claim[data-kind="uncertain"] { background: #f5e9db; color: #70501b; }
+.inline-claim[data-kind="false"] { background: #f8d8d2; color: #782e28; }
+.inline-claim[data-kind="misleading"] { background: #fff0cc; color: #704b04; }
+.inline-claim[data-kind="not_verifiable"],
+.inline-claim[data-kind="insufficient_evidence"] {
+  background: #e9e6df;
+  color: #50453a;
+}
+.inline-claim:hover, .inline-claim:focus-visible { filter: brightness(.95); }
+.claim-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + .5rem);
+  left: 0;
+  min-width: min(16rem, 70vw);
+  max-width: min(26rem, 80vw);
+  z-index: 5;
+  padding: .7rem;
+  border: 1px solid var(--border);
+  border-radius: .6rem;
+  box-shadow: 0 8px 24px #14262a25;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: .83rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+}
+.inline-claim:hover .claim-tooltip,
+.inline-claim:focus-visible .claim-tooltip { display: block; }
+.coverage-overview {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: .7rem;
+  background: var(--paper);
+}
+.coverage-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.coverage-stat { display: flex; flex-direction: column; gap: .2rem; }
+.coverage-stat strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.coverage-stat span { font-size: .85rem; color: var(--muted); }
+.coverage-overview > p { margin-top: .75rem; }
+@media (max-width: 35rem) {
+  .coverage-stats { grid-template-columns: 1fr; }
 }

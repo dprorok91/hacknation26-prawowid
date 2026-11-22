@@ -25,6 +25,10 @@ class Claim:
     claim_id: str
     text: str
     kind: str = "verifiable"
+    scope: str = "unknown"
+    empirical_test: str = ""
+    classification_reason: str = ""
+    reviewed: bool = False
 
 
 @dataclass(frozen=True)

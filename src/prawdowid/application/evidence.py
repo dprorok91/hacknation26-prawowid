@@ -10,8 +10,10 @@ from typing import Annotated, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from prawdowid.application.analyses import AnalysisError, ErrorCode
+from prawdowid.application.claims import sentence_spans
 from prawdowid.domain.models import Claim, EventQuery, EvidencePassage, EvidenceRelation, Verdict
 from prawdowid.domain.ports import StructuredLLM
+from prawdowid.domain.urls import eligible_model_url
 
 Output = TypeVar("Output", bound=BaseModel)
 
@@ -35,6 +37,16 @@ class _ModelOutput(BaseModel):
 class _Proposition(_ModelOutput):
     text: Annotated[str, Field(min_length=1, max_length=_CLAIM_CHARACTERS)]
     kind: Literal["verifiable", "opinion", "non_claim", "unsupported_scope"]
+    scope: Literal["public", "private", "unknown"] = "unknown"
+    empirical_test: str = Field(default="", max_length=500)
+    reason: str = Field(default="", max_length=500)
+
+
+class _Assessment(_ModelOutput):
+    kind: Literal["verifiable", "opinion", "non_claim", "unsupported_scope"]
+    scope: Literal["public", "private", "unknown"]
+    empirical_test: str = Field(default="", max_length=500)
+    reason: str = Field(min_length=8, max_length=500)
 
 
 class _Extraction(_ModelOutput):
@@ -74,32 +86,82 @@ class Verification:
 
 
 class EvidenceService:
-    def __init__(self, model: StructuredLLM):
+    def __init__(self, model: StructuredLLM, *, public_sources_only: bool = False):
         self.model = model
+        self.public_sources_only = public_sources_only
 
     async def extract(self, text: str) -> tuple[EventQuery, tuple[Claim, ...]]:
         text = text.strip()[:INPUT_CHARACTERS]
-        if _looks_like_topic(text) or not text:
+        if not text:
             return _nonclaim(text)
         result = await self._complete(_Extraction, {"task": "extract", "input_text": text})
-        selected = {}
-        for proposition in result.claims:
-            wording = proposition.text.strip()
+        selected: dict[str, _Proposition] = {}
+        for item in result.claims:
+            wording = item.text.strip()
             if wording and wording in text and not _PROMPT_INSTRUCTIONS.search(wording):
-                selected.setdefault(wording, proposition.kind)
+                selected.setdefault(wording, item)
+
+        # Segmentation only. Punctuation, capitalization and keywords do not
+        # decide factuality, and no word-count threshold is used as a gate.
         if not selected:
+            for sentence, _, _ in sentence_spans(text):
+                if not _PROMPT_INSTRUCTIONS.search(sentence):
+                    selected[sentence] = _Proposition(text=sentence, kind="unsupported_scope")
+
+        # One short sentence is an indivisible assertion: dropping a qualifier,
+        # negation, date or exception would change what we subsequently verify.
+        if len(selected) == 1 and "\n" not in text and len(text) <= _CLAIM_CHARACTERS:
+            spans = sentence_spans(text)
+            if len(spans) == 1:
+                sentence = spans[0][0]
+                wording, item = next(iter(selected.items()))
+                if wording != sentence and wording in sentence and not _PROMPT_INSTRUCTIONS.search(sentence):
+                    selected = {sentence: item}
+
+        claims = []
+        for wording, item in list(selected.items())[:5]:
+            kind, scope, empirical_test, reason = (
+                item.kind, item.scope, item.empirical_test, item.reason
+            )
+            reviewed = False
+            # Independently review every proposed class, including a false
+            # positive "verifiable" for a subjective judgment. This avoids
+            # rewarding whichever class a stochastic extractor returned first.
+            reviewed = True
+            try:
+                assessment = await self._complete(
+                    _Assessment, {"task": "assess", "statement": wording}
+                )
+                kind, scope, empirical_test, reason = (
+                    assessment.kind, assessment.scope,
+                    assessment.empirical_test, assessment.reason,
+                )
+                # A yes/no label without an observable falsification test
+                # is not enough to launch a public-source search.
+                if kind == "verifiable" and not empirical_test.strip():
+                    kind = "unsupported_scope"
+                    scope = "unknown"
+                    reason = "Model nie wskazał sposobu empirycznej weryfikacji."
+            except AnalysisError:
+                # Do not silently turn an unreviewed item into a verified
+                # factual assertion. Its uncertainty is visible in the UI.
+                if kind not in ("opinion", "verifiable"):
+                    kind, scope = "unsupported_scope", "unknown"
+                reason = "Nie udało się rozstrzygnąć rodzaju wypowiedzi."
+            claims.append(
+                Claim(
+                    f"c{len(claims) + 1}", wording, kind, scope,
+                    empirical_test, reason, reviewed,
+                )
+            )
+        if not claims:
             return _nonclaim(text if not _PROMPT_INSTRUCTIONS.search(text) else "")
-        claims = tuple(
-            Claim(f"c{index}", wording, kind)
-            for index, (wording, kind) in enumerate(selected.items(), start=1)
-        )
         query = result.query_text.strip()
         if (
-            not query
-            or query.casefold() not in text.casefold()
+            not query or query.casefold() not in text.casefold()
             or _PROMPT_INSTRUCTIONS.search(query)
         ):
-            query = next((claim.text for claim in claims if claim.kind == "verifiable"), "")
+            query = next((c.text for c in claims if c.kind == "verifiable"), "")
         after = _explicit_date(result.date_from, text, time.min)
         before = _explicit_date(result.date_to, text, time.max)
         if after and before and after > before:
@@ -108,11 +170,21 @@ class EvidenceService:
             dict.fromkeys(name.strip() for name in result.entities if _grounded(name, text))
         )
         location = result.location.strip() if _grounded(result.location, text) else None
-        return EventQuery(query, entities, location, after, before), claims
+        return EventQuery(query, entities, location, after, before), tuple(claims)
 
     async def verify(self, claim: Claim, evidence: Sequence[EvidencePassage]) -> Verification:
+        if claim.kind == "opinion":
+            return Verification(Verdict.NOT_VERIFIABLE, "Opinia lub ocena wartościująca; brak obiektywnego kryterium prawdziwości.")
         if claim.kind != "verifiable":
-            return Verification(Verdict.NOT_VERIFIABLE, "Wypowiedź nie zawiera sprawdzalnej tezy.")
+            return Verification(Verdict.NOT_VERIFIABLE, "Nie rozpoznano samodzielnego twierdzenia lub klasyfikacja pozostaje niepewna.")
+        if claim.scope == "private":
+            return Verification(
+                Verdict.INSUFFICIENT_EVIDENCE,
+                "Twierdzenie dotyczy konkretnej osoby lub prywatnej sytuacji; "
+                "potrzebne są dane dotyczące tego przypadku. Ogólna wiedza nie wystarcza.",
+            )
+        if self.public_sources_only:
+            evidence = [passage for passage in evidence if eligible_model_url(passage.url)]
         supplied = {passage.passage_id: passage for passage in evidence[:PASSAGE_LIMIT]}
         if not supplied:
             return Verification(Verdict.INSUFFICIENT_EVIDENCE, "Brak pasujących fragmentów źródeł.")
@@ -161,13 +233,6 @@ class EvidenceService:
             raise AnalysisError(
                 ErrorCode.MODEL_UNAVAILABLE, "Model returned an invalid result."
             ) from None
-
-
-def _looks_like_topic(text: str) -> bool:
-    words = text.split()
-    return 0 < len(words) <= 2 and all(
-        word.isalpha() and word[0].isupper() and not word.isupper() for word in words
-    )
 
 
 def _has_claim_anchors(claim: str, quote: str) -> bool:
