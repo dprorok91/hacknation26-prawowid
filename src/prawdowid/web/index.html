@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#f5f3ec">
   <title>PRAWDOWID</title>
   <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js" defer></script>
+  <script src="/assets/app.js?v=20" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#tresc">Przejdź do treści</a>
@@ -62,6 +62,7 @@
       </form>
     </div>
     <p id="analysis-status" class="feedback status" role="status"></p>
+    <button type="button" id="paste-article-fallback" class="secondary" hidden>Wklej tekst artykułu zamiast adresu</button>
     <button type="button" id="delete-analysis" class="secondary delete-action" hidden>Usuń analizę</button>
     <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
       <h2 id="delete-title">Usunąć analizę?</h2>

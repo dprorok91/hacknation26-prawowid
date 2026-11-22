@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from prawdowid.domain.models import Claim, EventQuery, EvidencePassage
 from prawdowid.domain.ports import Embedder
-from prawdowid.domain.semantics import augmented_tokens
+from prawdowid.domain.semantics import augmented_tokens, relevance_form
 from prawdowid.infrastructure.db_models import document_versions, documents, passages, sources
 from prawdowid.infrastructure.embeddings import EMBEDDING_DIMENSIONS, EmbeddingUnavailable
 
@@ -95,7 +95,12 @@ def matches_event(event: EventQuery, hit: RetrievedPassage) -> bool:
             and not any(word.startswith(root) for word in text_words for root in group)
         ):
             return False
-    return len(present & action) >= min(2, len(action))
+    # Polish inflection must not discard a relevant quote after FTS finds it:
+    # "zainicjowano" / "zainicjowany" and "dnia" / "dzień". The
+    # database query remains literal; this affects only a relevance gate.
+    normalized_present = {relevance_form(word) for word in present}
+    normalized_action = {relevance_form(word) for word in action}
+    return len(normalized_present & normalized_action) >= min(2, len(normalized_action))
 
 
 def reciprocal_rank_fusion(

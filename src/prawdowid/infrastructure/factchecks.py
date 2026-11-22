@@ -41,6 +41,8 @@ class PriorReview:
             "reviewed_at": self.reviewed_at,
             "provider": self.provider,
             "match_status": "not_assessed",  # Matching requires separate evidence review.
+            "source_category": "fact_check",
+            "source_role": "core",
         }
 
 

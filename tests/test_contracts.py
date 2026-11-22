@@ -123,8 +123,8 @@ def test_channels_share_submission_and_polling_contract():
     [
         ("analyses", {"kind": "url", "content": "https://example.org/report"}, True),
         ("adapters/message-demo", {"kind": "url", "content": "https://example.org/report"}, False),
-        ("analyses", {"kind": "url", "content": "https://example.org/report?utm_id=1"}, False),
-        ("analyses", {"kind": "url", "content": "https://example.org/report#private"}, False),
+        ("analyses", {"kind": "url", "content": "https://example.org/report?utm_id=1"}, True),
+        ("analyses", {"kind": "url", "content": "https://example.org/report#private"}, True),
         ("analyses", {"kind": "text", "content": "Moje prywatne dane", "web_search": True}, False),
     ],
 )

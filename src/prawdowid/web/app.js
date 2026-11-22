@@ -18,6 +18,7 @@ const inputText = document.querySelector("#content-text");
 const inputUrl = document.querySelector("#content-url");
 const webSearchChoice = document.querySelector("#web-search-choice");
 const webSearch = document.querySelector("#enable-web-search");
+const pasteFallback = document.querySelector("#paste-article-fallback");
 
 const analysisIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const dateFormat = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" });
@@ -111,10 +112,30 @@ function timestamp(label, value) {
   return line;
 }
 
+function sourceFlagsLabel(source) {
+  const categories = {
+    official: "Źródło urzędowe",
+    major_media: "Duże medium",
+    fact_check: "Serwis fact-checkingowy",
+    other_media: "Inne medium",
+  };
+  const role = source.source_role === "core" ? "źródło główne" : "perspektywa dodatkowa";
+  return (categories[source.source_category] || "Inne źródło") + " · " + role;
+}
+
+function sourceBadge(source) {
+  const badge = element("span", sourceFlagsLabel(source), "source-flag");
+  badge.dataset.category = source.source_category || "other_media";
+  badge.dataset.role = source.source_role || "perspective";
+  return badge;
+}
+
 function sourceReference(entry) {
+  const container = element("span", null, "citation-reference");
   const link = element("a", entry.source.title || entry.source.publisher || "Źródło");
   link.href = "#" + entry.anchor;
-  return link;
+  container.append(link, sourceBadge(entry.source));
+  return container;
 }
 
 function appendList(title, items, render) {
@@ -172,6 +193,49 @@ function renderAnnotations(data) {
   reportContent.append(heading, intro, block);
 }
 
+function renderExecutiveSummary(data) {
+  const claims = rows(data.claims);
+  if (!claims.length) return;
+  const card = element("section", null, "result-summary");
+  card.append(element("h3", "Wniosek z analizy"));
+  const sources = new Map(rows(data.sources).map((source) => [source.source_id, source]));
+  const labels = {
+    confirmed: "Potwierdzone w dostępnych źródłach",
+    false: "Sprzeczne z dostępnym dowodem",
+    misleading: "Mylące / brak istotnego kontekstu",
+    insufficient_evidence: "Nie udało się rozstrzygnąć",
+    not_verifiable: "Opinia lub twierdzenie nieweryfikowalne",
+  };
+  for (const claim of claims.slice(0, 3)) {
+    const row = element("div", null, "summary-claim");
+    const label = element("strong", labels[claim.verdict] || "Wynik nierozstrzygnięty");
+    const statement = element("p", claim.text);
+    row.append(label, statement);
+    const source = rows(claim.evidence_source_ids).map((id) => sources.get(id)).find(Boolean);
+    if (source) {
+      const url = safeLink(source.url);
+      if (url) {
+        const link = element("a", "Zobacz cytowane źródło");
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        row.append(link);
+      }
+      if (source.exact_quote) {
+        row.append(element("blockquote", source.exact_quote));
+      }
+    } else {
+      row.append(element("p", "Nie znaleziono pasującego cytatu potwierdzającego lub "
+        + "obalającego tę tezę.", "minor"));
+    }
+    card.append(row);
+  }
+  if (claims.length > 3) {
+    card.append(element("p", `Pozostałe ${claims.length - 3} twierdzenia opisano poniżej.`, "minor"));
+  }
+  reportContent.append(card);
+}
+
 function renderDiscovery(data) {
   const search = data.search;
   if (!search || typeof search !== "object") return;
@@ -185,7 +249,9 @@ function renderDiscovery(data) {
     completed: "Wyszukiwanie wykonane.",
   };
   line.textContent = (labels[search.status] || "Stan wyszukiwania nieznany.")
-    + (search.attempted ? " Otrzymane publikacje: " + (search.candidates_found || 0) + "." : "");
+    + (search.attempted ? " Otrzymane publikacje: " + (search.candidates_found || 0) + "." : "")
+    + (search.live_attempted ? " Sprawdzono oficjalne strony: "
+      + search.live_attempted + "; z treścią: " + search.live_usable + "." : "");
   reportContent.append(header, line);
   const errors = rows(search.provider_errors);
   if (errors.length) {
@@ -198,6 +264,15 @@ function renderDiscovery(data) {
 function renderCoverage(data) {
   const coverage = data.coverage;
   if (!coverage || typeof coverage !== "object") return;
+  const progress = element("p", `Pokrycie materiału: ${coverage.input_chars || 0} znaków, `
+    + `${coverage.input_segments || 0} segmentów, `
+    + `${coverage.extracted_claims || 0} twierdzeń, `
+    + `${coverage.cited_claims || 0} twierdzeń z cytowanym dowodem.`, "minor");
+  reportContent.append(element("h3", "Pokrycie analizy"), progress);
+  if (coverage.partial_analysis) {
+    reportContent.append(element("p", "ANALIZA CZĘŚCIOWA — nie wszystkie tezy zostały "
+      + "sprawdzone lub brak dowodów. Znalezione publikacje nie są potwierdzeniem.", "minor"));
+  }
   const header = element("h3", "Przegląd relacji mediów");
   const card = element("section", null, "coverage-overview");
   const evidence = rows(coverage.evidence_publishers);
@@ -212,6 +287,26 @@ function renderCoverage(data) {
     stats.append(cell);
   }
   card.append(stats);
+  const categories = [
+    ["official", "Źródła urzędowe"],
+    ["major_media", "Duże media"],
+    ["fact_check", "Fact-check"],
+    ["other_media", "Inne media — dodatkowa perspektywa"],
+  ];
+  const groups = coverage.evidence_by_category || {};
+  const groupList = element("ul", null, "category-coverage");
+  for (const [key, label] of categories) {
+    const publishers = rows(groups[key]);
+    const item = element("li");
+    const badge = sourceBadge({
+      source_category: key, source_role: key === "other_media" ? "perspective" : "core",
+    });
+    item.append(badge, element("span", publishers.length
+      ? `${publishers.length} wydawców z cytatami: ${publishers.join(", ")}`
+      : `${label}: brak cytowalnego dowodu w dostępnej bazie.`, "minor"));
+    groupList.append(item);
+  }
+  card.append(groupList);
   if (coverage.note) card.append(element("p", coverage.note, "minor"));
   const citedFactChecks = rows(coverage.fact_check_evidence_publishers);
   if (citedFactChecks.length) {
@@ -259,6 +354,7 @@ function renderPriorFactChecks(data) {
     if (entry.reviewed_claim) item.append(element("p", "Teza oceniana przez źródło: " + entry.reviewed_claim));
     if (entry.published_rating) item.append(element("p", "Ocena wydawcy: " + entry.published_rating, "minor"));
     item.append(element("p", entry.publisher + " · dopasowanie do tezy niepotwierdzone", "minor"));
+    item.append(element("p", sourceFlagsLabel(entry), "minor"));
     list.append(item);
   }
   if (reviews.length) reportContent.append(list);
@@ -269,6 +365,7 @@ function showReport(data, shareCandidate = false) {
   const sources = rows(data.sources).map((source, index) => ({ source, anchor: "source-" + index }));
   const byId = new Map(sources.map((entry) => [entry.source.source_id, entry]));
   reportContent.replaceChildren();
+  renderExecutiveSummary(data);
   renderAnnotations(data);
   renderDiscovery(data);
 
@@ -343,7 +440,9 @@ function showReport(data, shareCandidate = false) {
   renderCoverage(data);
   renderPriorFactChecks(data);
 
-  appendList("Znalezione w sieci (metadane, nie dowody)", rows(data.discovered_links), (found) => {
+  const foundCore = rows(data.discovered_links).filter((found) => found.source_role === "core");
+  const foundOther = rows(data.discovered_links).filter((found) => found.source_role !== "core");
+  const renderDiscovered = (found) => {
     const item = element("li");
     const title = found.title || found.publisher || "Artykuł";
     const url = safeLink(found.url);
@@ -358,11 +457,14 @@ function showReport(data, shareCandidate = false) {
     if (found.publisher) {
       const label = found.category === "fact_check" ? " — serwis fact-checkingowy" : "";
       item.append(element("p", found.publisher + label, "minor"));
+      item.append(sourceBadge(found));
     }
     return item;
-  });
+  };
+  appendList("Wyszukane źródła główne (metadane, nie dowody)", foundCore, renderDiscovered);
+  appendList("Inne media — dodatkowe perspektywy", foundOther, renderDiscovered);
 
-  appendList("Źródła", sources, (entry) => {
+  const renderSource = (entry) => {
     const source = entry.source;
     const item = element("li");
     item.id = entry.anchor;
@@ -383,11 +485,14 @@ function showReport(data, shareCandidate = false) {
       const tag = source.source_type === "factcheck" ? " — fact-checking"
         : source.source_type === "primary" ? " — źródło pierwotne" : "";
       item.append(element("p", source.publisher + tag));
+      item.append(sourceBadge(source));
     }
     item.append(timestamp("Publikacja", source.published_at), timestamp("Pobranie", source.fetched_at));
     if (source.exact_quote) item.append(element("blockquote", source.exact_quote));
     return item;
-  });
+  };
+  appendList("Źródła główne — cytaty", sources.filter((entry) => entry.source.source_role === "core"), renderSource);
+  appendList("Inne media — cytaty i perspektywy", sources.filter((entry) => entry.source.source_role !== "core"), renderSource);
 
   const limitations = rows(data.limitations);
   if (limitations.length) {
@@ -421,7 +526,7 @@ async function fetchJson(path, options = {}, receiveHeaders) {
 }
 
 async function poll(id, result) {
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + 240_000;
   for (let count = 0; pendingStates.has(result.status) && count < 90; count += 1) {
     if (currentAnalysisId !== id) return null;
     const delay = Math.min(4000, Math.max(500, (Number(result.retry_after_seconds) || 1) * 1000));
@@ -448,6 +553,16 @@ function syncInput() {
   clearFieldError();
 }
 
+pasteFallback.addEventListener("click", () => {
+  const textMode = form.querySelector('input[name="kind"][value="text"]');
+  textMode.checked = true;
+  webSearch.checked = false; // Web search of pasted content requires fresh, explicit consent.
+  syncInput();
+  pasteFallback.hidden = true;
+  inputText.focus();
+  setStatus("Wklej treść artykułu. Bez jej pobrania adres nie jest dowodem.");
+});
+
 form.addEventListener("change", (event) => {
   if (event.target.name === "kind") syncInput();
 });
@@ -465,6 +580,7 @@ form.addEventListener("submit", async (event) => {
   }
 
   setSubmitting(true);
+  pasteFallback.hidden = true;
   report.hidden = true;
   currentAnalysisId = null;
   setDeletionGrant(null);
@@ -490,11 +606,15 @@ form.addEventListener("submit", async (event) => {
     if (result.status !== "completed" || !result.report) {
       throw new Error(result.error_code || result.status);
     }
-    if (!deleting) setStatus("Raport jest gotowy.");
+    if (!deleting) setStatus(result.report.coverage?.partial_analysis
+      ? "Analiza częściowa — sprawdź pokrycie i brakujące dowody."
+      : "Raport jest gotowy.");
     showReport(result.report, kind === "url");
   } catch (error) {
     if (!deleting && (!submittedId || currentAnalysisId === submittedId)) {
-      showError(error.name === "TimeoutError" ? "timeout" : error.message, input);
+      const code = error.name === "TimeoutError" ? "timeout" : error.message;
+      showError(code, input);
+      pasteFallback.hidden = !(kind === "url" && code === "source_unavailable");
     }
   } finally {
     setSubmitting(false);

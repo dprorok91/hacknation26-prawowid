@@ -86,3 +86,82 @@ def test_extracts_body_only_when_policy_allows():
     assert not extract_article(
         raw.replace(b"<article>", b"<article class=paywall>"), allow_text=True
     ).body
+
+
+def test_bip_sct_extraction_without_article_or_main():
+    raw = """<html><head><title>SCT — BIP Kraków</title></head><body>
+      <nav><p>Aktualności, szukaj w BIP, menu główne</p></nav>
+      <h1>Strefa Czystego Transportu (SCT)</h1>
+      <section><h2>Informacje dotyczące wprowadzenia Strefy Czystego Transportu</h2>
+        <p>Strefa Czystego Transportu (SCT) obowiązuje od 01.01.2026 r.</p>
+        <p>Zakaz wjazdu nie dotyczy pojazdów spełniających wymogi.</p>
+        <ul>
+          <li>benzyna: norma Euro 4 lub nowsza</li>
+          <li>diesel: norma Euro 6 lub nowsza</li>
+        </ul>
+        <p>Zwolnione z wymogów SCT są pojazdy mieszkańców Krakowa.</p>
+        <ul><li>pojazdy zabytkowe</li><li>pojazdy specjalne</li></ul>
+      </section>
+      <a href="#metka">Pokaż metkę</a>
+      <footer><p>Biuletyn - kontakt i menu redakcji</p></footer>
+    </body></html>""".encode()
+    url = "https://www.bip.krakow.pl/?dok_id=226666"
+    result = extract_article(raw, allow_text=True, source_url=url)
+    assert "obowiązuje od 01.01.2026" in result.body
+    assert "Zwolnione z wymogów" in result.body
+    assert "Euro 4" in result.body
+    assert "pojazdy zabytkowe" in result.body
+    assert "menu główne" not in result.body
+    assert "kontakt i menu redakcji" not in result.body
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.bip.krakow.pl/?dok_id=100000",
+    "https://other.example/?dok_id=226666",
+    "http://www.bip.krakow.pl/?dok_id=226666",
+    "",
+])
+def test_bip_fallback_scoped_to_one_approved_source_url(url):
+    raw = (
+        "<h2>Informacje dotyczące wprowadzenia Strefy Czystego Transportu</h2>"
+        "<p>Strefa Czystego Transportu (SCT) obowiązuje od 01.01.2026 r.</p>"
+    ).encode()
+    assert extract_article(raw, allow_text=True, source_url=url).body is None
+
+
+@pytest.mark.parametrize("robots,allow_text", [
+    ("noarchive", True),
+    ("nosnippet", True),
+    ("", False),
+])
+def test_bip_fallback_respects_policy_and_robots(robots, allow_text):
+    raw = (
+        "<h2>Informacje dotyczące wprowadzenia Strefy Czystego Transportu</h2>"
+        "<p>Strefa Czystego Transportu (SCT) obowiązuje od 01.01.2026 r.</p>"
+    ).encode()
+    assert extract_article(
+        raw, allow_text=allow_text, robots=robots,
+        source_url="https://www.bip.krakow.pl/?dok_id=226666",
+    ).body is None
+
+
+def test_bip_fallback_needs_known_editorial_heading():
+    raw = (
+        "<nav><h2>Menu BIP</h2><p>Strefa Czystego Transportu obowiązuje od 01.01.2026 r.</p></nav>"
+    ).encode()
+    assert extract_article(
+        raw, allow_text=True,
+        source_url="https://www.bip.krakow.pl/?dok_id=226666",
+    ).body is None
+
+
+def test_bip_fallback_excludes_paywalls():
+    raw = (
+        "<h2>Informacje dotyczące wprowadzenia Strefy Czystego Transportu</h2>"
+        "<p>Strefa Czystego Transportu obowiązuje od 01.01.2026 r.</p>"
+        "<div class=paywall>Paywall</div>"
+    ).encode()
+    assert extract_article(
+        raw, allow_text=True,
+        source_url="https://www.bip.krakow.pl/?dok_id=226666",
+    ).body is None

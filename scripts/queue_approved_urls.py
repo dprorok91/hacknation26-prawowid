@@ -15,7 +15,7 @@ from prawdowid.infrastructure.db import create_database
 from prawdowid.infrastructure.ingestion import enqueue_article
 
 
-async def enqueue(urls: list[str]) -> int:
+async def enqueue(urls: list[str], *, force: bool = False) -> int:
     db = create_database(get_settings().database_url)
     queued = 0
     try:
@@ -31,7 +31,7 @@ async def enqueue(urls: list[str]) -> int:
                 if not permission:
                     print(f"SKIPPED {domain}: publisher approval is required")
                     continue
-                job_id = await enqueue_article(session, url)
+                job_id = await enqueue_article(session, url, force=force)
                 print(f"QUEUED {url}: {job_id}")
                 queued += 1
     finally:
@@ -42,8 +42,12 @@ async def enqueue(urls: list[str]) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("urls", nargs="+", help="Public article URLs, one or more")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Start a new generation after a completed fetch (never duplicate in-flight work)",
+    )
     args = parser.parse_args()
-    completed = asyncio.run(enqueue(args.urls))
+    completed = asyncio.run(enqueue(args.urls, force=args.force))
     if not completed:
         parser.exit(2, "No URLs queued. Check source approvals and URL validity.\n")
 

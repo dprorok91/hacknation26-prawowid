@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=384, ge=384, le=384)
     max_fetch_concurrency: PositiveInt = 4
     max_llm_concurrency: PositiveInt = 1
-    analysis_deadline_seconds: PositiveInt = 28
+    analysis_deadline_seconds: PositiveInt = 180
     analysis_retention_hours: int = Field(default=24, ge=1, le=168)
     text_retention_minutes: int = Field(default=15, ge=1, le=120)
     log_raw_user_input: bool = False

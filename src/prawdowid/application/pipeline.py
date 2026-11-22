@@ -1,32 +1,56 @@
 """Analysis orchestration over independently testable retrieval and model adapters."""
 
+import re
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from hashlib import sha256
 from urllib.parse import urlsplit
 
 from prawdowid.application.analyses import Submission
-from prawdowid.application.claims import private_reference
+from prawdowid.application.claim_batches import claim_batches
+from prawdowid.application.claims import candidate_spans, private_reference
 from prawdowid.application.narratives import compare_narratives
 from prawdowid.domain.models import EventQuery
 from prawdowid.domain.semantics import aliases_for, expand_query
+from prawdowid.domain.source_flags import classify_source
+from prawdowid.domain.urls import canonical_url
+from prawdowid.infrastructure.live_official import (
+    matching_live_passages,
+    official_entrypoints,
+)
 
 
 class AnalysisPipeline:
-    def __init__(self, evidence, retrieval, discovery, corpus, factchecks=None):
+    def __init__(self, evidence, retrieval, discovery, corpus, factchecks=None, live_official=None):
         self.evidence = evidence
         self.retrieval = retrieval
         self.discovery = discovery
         self.corpus = corpus
         self.factchecks = factchecks
+        self.live_official = live_official
 
     async def analyze(self, analysis_id: str, submission: Submission, *, article=None, evidence=None) -> dict:
         text = submission.content
         evidence = self.evidence if evidence is None else evidence
+        truncated_article = False
         if submission.kind == "url":
             if article is None:
                 article = await self.corpus.article(text)
-            text = f"{article.title}\n\n{article.text}"[:20_000]
-        event, claims = await evidence.extract(text)
+            source_text = f"{article.title or ''}\n\n{article.text}"
+            truncated_article = len(source_text) > 20_000
+            text = source_text[:20_000]
+        article_segments = len(candidate_spans(text))
+        batches = claim_batches(text)
+        extracted = [await evidence.extract(batch) for batch in batches]
+        event = extracted[0][0]
+        unique = {}
+        for _, propositions in extracted:
+            for proposition in propositions:
+                unique.setdefault(proposition.text.casefold(), proposition)
+        claims = tuple(
+            replace(proposition, claim_id=f"c{index}")
+            for index, proposition in enumerate(unique.values(), start=1)
+        )
         if article and article.published_at and not event.occurred_after:
             event = EventQuery(
                 query_text=event.query_text,
@@ -36,10 +60,24 @@ class AnalysisPipeline:
                 occurred_before=article.published_at + timedelta(days=7),
             )
 
-        matches = await self._retrieve(event, claims)
+        referents = _article_referents(text, claims)
+        matches = await self._retrieve(event, claims, referents=referents)
         limitations = set()
+        if len(batches) > 1:
+            limitations.add(
+                "Długi materiał przeanalizowano w dwóch partiach; "
+                "wybrano maksymalnie 10 twierdzeń, nie wszystkie zdania artykułu."
+            )
+        if article_segments > len(claims):
+            limitations.add(
+                "Nie wszystkie segmenty tekstu zostały ocenione. "
+                "To analiza częściowa, nie weryfikacja całego artykułu."
+            )
+        if truncated_article:
+            limitations.add("Materiał przekroczył 20 000 znaków; końcową część pominięto.")
         discovered_links: list[dict] = []
         fact_checks: list[dict] = []
+        live_passages = ()
         fact_check_errors: list[str] = []
         search = {
             "requested": submission.kind == "url" or submission.web_search,
@@ -49,6 +87,8 @@ class AnalysisPipeline:
             "provider_errors": [],
             "per_claim": [],
             "queries": [],
+            "live_attempted": 0,
+            "live_usable": 0,
         }
         if submission.kind == "text" and not submission.web_search:
             limitations.add("Tekst sprawdzono tylko w lokalnym zbiorze źródeł.")
@@ -102,17 +142,45 @@ class AnalysisPipeline:
                 )
                 for item in discovery.candidates:
                     ingest_candidates.setdefault(item.canonical_url, item)
-                    if item.canonical_url in by_url:
-                        if claim.claim_id not in by_url[item.canonical_url]["claim_ids"]:
-                            by_url[item.canonical_url]["claim_ids"].append(claim.claim_id)
-                    else:
+                    if (
+                        item.canonical_url in by_url
+                        and claim.claim_id not in by_url[item.canonical_url]["claim_ids"]
+                    ):
+                        by_url[item.canonical_url]["claim_ids"].append(claim.claim_id)
+                    elif item.canonical_url not in by_url:
+                        flags = classify_source(
+                            item.canonical_url, publisher=item.publisher,
+                            provider=item.provider, metadata_only=True,
+                        )
                         by_url[item.canonical_url] = {
                             "title": item.headline,
                             "publisher": item.publisher,
                             "url": item.canonical_url,
                             "provider": item.provider,
                             "published_at": _timestamp(item.published_at),
-                            "category": _publisher_category(item.publisher, item.canonical_url),
+                            "category": (
+                                "fact_check" if flags.source_category == "fact_check" else "news"
+                            ),
+                            "source_category": flags.source_category,
+                            "source_role": flags.source_role,
+                            "claim_ids": [claim.claim_id],
+                        }
+            # A reviewed municipal source is a starting URL, never a model-made
+            # citation. Its body must pass the same live fetch and quote checks.
+            for claim in (public_claims if self.live_official is not None else ()):
+                for item in official_entrypoints(claim.text):
+                    ingest_candidates.setdefault(item.canonical_url, item)
+                    if item.canonical_url not in by_url:
+                        flags = classify_source(item.canonical_url, publisher=item.publisher)
+                        by_url[item.canonical_url] = {
+                            "title": item.headline,
+                            "publisher": item.publisher,
+                            "url": item.canonical_url,
+                            "provider": item.provider,
+                            "published_at": None,
+                            "category": "news",
+                            "source_category": flags.source_category,
+                            "source_role": flags.source_role,
                             "claim_ids": [claim.claim_id],
                         }
             # Preserve the bounded provider results, including paid-search official
@@ -131,12 +199,25 @@ class AnalysisPipeline:
                     fact_checks.extend(review.as_report(claim.claim_id) for review in reviews)
                     fact_check_errors.extend(errors)
             if ingest_candidates:
-                # Metadata are not evidence. Only approved article content may
-                # be fetched and supplied to the verifier.
+                # The corpus stores only domain-approved text. Separately, a
+                # narrowly reviewed municipal portal may provide ephemeral,
+                # short excerpts, with no persistent article copy.
+                if self.live_official is not None:
+                    live = await self.live_official.collect(
+                        tuple(ingest_candidates.values()), tuple(public_claims)
+                    )
+                    live_passages = live.passages
+                    search["live_attempted"] = live.attempted
+                    search["live_usable"] = live.usable
+                    if live.errors:
+                        limitations.add(
+                            "Części oficjalnych stron nie udało się wykorzystać "
+                            "jako źródła tekstowego."
+                        )
                 updated = await self.corpus.enrich(tuple(ingest_candidates.values()))
                 if updated:
-                    matches = await self._retrieve(event, claims)
-                else:
+                    matches = await self._retrieve(event, claims, referents=referents)
+                elif not live_passages:
                     limitations.add(
                         "Znaleziono odnośniki w sieci, ale brak dostępnej treści "
                         "z zatwierdzonych źródeł. Metadane nie są dowodem."
@@ -155,7 +236,7 @@ class AnalysisPipeline:
             "search": search,
             # A private text analysis is accessible only via its unguessable ID
             # and expires under the existing text retention policy.
-            "annotated_text": text[:5000] if submission.kind == "text" else None,
+            "annotated_text": text[:20_000] if submission.kind == "text" else None,
             "coverage": {},
             "fact_checks": fact_checks,
             "fact_check_errors": sorted(set(fact_check_errors)),
@@ -165,14 +246,36 @@ class AnalysisPipeline:
         offset_cursor = 0
         for claim in claims:
             found = matches.get(claim.claim_id)
-            passages = found.passages if found else ()
+            local_passages = found.passages if found else ()
+            live_for_claim = matching_live_passages(claim.text, live_passages)
+            # Reserve room for on-demand primary evidence even if the local
+            # top-ten contains old, topic-only hits. LLM still validates quotes.
+            passages = tuple({item.passage_id: item for item in (*live_for_claim, *local_passages)}.values())[:10]
             candidate_ids.update(passage.passage_id for passage in passages)
             if found and found.warnings:
                 limitations.add("Dla części zapytań wyszukiwanie wektorowe było niedostępne.")
-            decision = await evidence.verify(claim, passages)
+            # Resolve "tego dnia" / "datą obchodów" only from the immediately
+            # preceding named event within the SAME paragraph. This identifies
+            # the referent; it is not supporting evidence or a source quote.
+            referent = referents.get(claim.claim_id)
+            verification_claim = (
+                replace(claim, text=f"{referent}. {claim.text}") if referent else claim
+            )
+            decision = await evidence.verify(verification_claim, passages)
             citation_ids = []
+            seen_citations = set()
             for citation in decision.citations:
                 passage = citation.passage
+                # Duplicate copies of an identical quotation on the same host
+                # are not multiple independent pieces of evidence.
+                fingerprint = (
+                    urlsplit(passage.url).hostname,
+                    " ".join(citation.quote.split()).casefold(),
+                    citation.relation,
+                )
+                if fingerprint in seen_citations:
+                    continue
+                seen_citations.add(fingerprint)
                 source_id = _reference(sources, passage, citation.quote, citation.relation)
                 if (
                     citation.relation == "supports"
@@ -250,16 +353,46 @@ class AnalysisPipeline:
             limitations.add("Za mało niezależnych źródeł o tym samym zdarzeniu do porównania.")
         report["sources"] = list(sources.values())
         # Discovery coverage is topic-level, never mislabeled as claim support.
-        cited_publishers = sorted({row["publisher"] for row in sources.values()})
+        claim_cited_ids = {
+            source_id for claim_row in report["claims"]
+            for source_id in claim_row["evidence_source_ids"]
+        }
+        cited_sources = [
+            row for source_id, row in sources.items() if source_id in claim_cited_ids
+        ]
+        cited_publishers = sorted({row["publisher"] for row in cited_sources})
         discovered_publishers = sorted({
             item["publisher"] for item in discovered_links if item["publisher"]
         })
+        evidence_by_category = {
+            category: sorted({
+                row["publisher"] for row in cited_sources
+                if row.get("source_category") == category
+            })
+            for category in ("official", "major_media", "fact_check", "other_media")
+        }
+        cited_claims = sum(bool(row["evidence_source_ids"]) for row in report["claims"])
+        incomplete = (
+            article_segments > len(claims)
+            or truncated_article
+            or (submission.kind == "url" and len(claims) < 2)
+            or (submission.kind == "url" and len(text) >= 600 and len(claims) < 3)
+        )
+        if not cited_claims:
+            limitations.add("Nie zweryfikowano żadnej tezy cytatem z niezależnego źródła.")
         report["coverage"] = {
+            "input_chars": len(text),
+            "input_segments": article_segments,
+            "extracted_claims": len(claims),
+            "cited_claims": cited_claims,
+            "partial_analysis": incomplete or cited_claims == 0,
+            "evidence_by_category": evidence_by_category,
+            "evidence_categories_missing": [
+                category for category, publishers in evidence_by_category.items()
+                if not publishers
+            ],
             "evidence_publishers": cited_publishers,
-            "fact_check_evidence_publishers": sorted({
-                row["publisher"] for row in sources.values()
-                if row.get("source_type") == "factcheck"
-            }),
+            "fact_check_evidence_publishers": evidence_by_category["fact_check"],
             "topic_publishers": discovered_publishers,
             "fact_check_candidates": [
                 item for item in discovered_links if item["category"] == "fact_check"
@@ -273,17 +406,63 @@ class AnalysisPipeline:
         report["source_snapshot"] = sha256("\n".join(sorted(candidate_ids)).encode()).hexdigest()
         return report
 
-    async def _retrieve(self, event, claims):
-        return {
-            claim.claim_id: await self.retrieval.search(
-                _event_for_claim(event, claim, total_claims=len(claims)),
-                expand_query(claim.text),
-            )
-            for claim in claims
-            if claim.kind == "verifiable"
-            and claim.scope == "public"
-            and not private_reference(claim.text)
-        }
+    async def _retrieve(self, event, claims, *, referents=None):
+        matches = {}
+        for claim in claims:
+            if claim.kind != "verifiable" or claim.scope != "public" or private_reference(claim.text):
+                continue
+            query_event = _event_for_claim(event, claim, total_claims=len(claims))
+            primary = await self.retrieval.search(query_event, expand_query(claim.text))
+            # Anaphora without a subject is often ranked behind unrelated hits.
+            # A second, local-only query uses the preceding named referent.
+            # Prefer those hits, but keep original results as fallback.
+            referent = (referents or {}).get(claim.claim_id)
+            if referent:
+                contextual = await self.retrieval.search(
+                    query_event,
+                    f"{referent} {expand_query(claim.text)}",
+                )
+                primary = _merge_retrieval(contextual, primary)
+            # Local-only second query to counterbalance an absolute/exceptionless claim.
+            # The verifier still requires exact source quotations for any verdict.
+            if re.search(
+                r"\b(?:każd[yae]|wszys(?:cy|tkie|tkich|tko)|bez wyjątków?)\b",
+                claim.text,
+                re.IGNORECASE,
+            ):
+                counter = await self.retrieval.search(
+                    query_event, f"{expand_query(claim.text)} wyjątki dopuszczenie warunki",
+                )
+                primary = _merge_retrieval(primary, counter)
+            matches[claim.claim_id] = primary
+        return matches
+
+
+@dataclass(frozen=True)
+class _MergedRetrieval:
+    """Minimal result contract accepted by pipeline and retrieval test doubles."""
+
+    passages: tuple
+    warnings: tuple[str, ...]
+
+
+def _merge_retrieval(primary, secondary):
+    """Keep distinct passages from both local queries without losing warnings."""
+    # Reserve room for counterexamples even when the primary query returns
+    # a full top-ten set; otherwise the second search never affects evidence.
+    main = list(primary.passages)
+    main_ids = {item.passage_id for item in main}
+    contrasting = [
+        item for item in secondary.passages if item.passage_id not in main_ids
+    ]
+    balanced = [*main[:6], *contrasting[:4], *main[6:], *contrasting[4:]]
+    items = {}
+    for item in balanced:
+        items.setdefault(item.passage_id, item)
+    return _MergedRetrieval(
+        passages=tuple(items.values())[:10],
+        warnings=tuple(dict.fromkeys((*primary.warnings, *secondary.warnings))),
+    )
 
 
 def _event_for_claim(event: EventQuery, claim, *, total_claims: int) -> EventQuery:
@@ -322,13 +501,22 @@ def _reference(references, passage, quote: str, relation: str) -> str:
     quote_key = sha256(f"{relation}:{quote}".encode()).hexdigest()[:12]
     source_id = f"{passage.passage_id}:{quote_key}"
     if source_id not in references:
+        # One source-domain row serves all ministries on the government portal.
+        # Its display_name must not be attributed to every /web/<ministry> URL.
+        publisher = (
+            "Portal Gov.pl" if urlsplit(passage.url).hostname == "www.gov.pl"
+            else passage.publisher
+        )
+        flags = classify_source(passage.url, publisher=publisher)
         references[source_id] = {
             "source_id": source_id,
             "passage_id": passage.passage_id,
-            "publisher": passage.publisher,
+            "publisher": publisher,
             "source_type": getattr(passage, "source_type", "news"),
+            "source_category": flags.source_category,
+            "source_role": flags.source_role,
             "title": passage.title,
-            "url": passage.url,
+            "url": canonical_url(passage.url),
             "published_at": _timestamp(passage.published_at),
             "fetched_at": _timestamp(getattr(passage, "fetched_at", None)),
             "exact_quote": quote,
@@ -338,14 +526,33 @@ def _reference(references, passage, quote: str, relation: str) -> str:
     return source_id
 
 
-def _publisher_category(publisher: str, url: str) -> str:
-    """Recognize specialized fact-checking publishers, never accept their verdict blindly."""
-    host = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
-    name = publisher.casefold()
-    known_hosts = ("demagog.org.pl", "konkret24.tvn24.pl", "sprawdzam.afp.com")
-    if any(host == item or host.endswith("." + item) for item in known_hosts):
-        return "fact_check"
-    # Aggregators commonly hide the original domain, but preserve the publisher.
-    if any(term in name for term in ("demagog", "konkret24", "afp sprawdzam")):
-        return "fact_check"
-    return "news"
+_EVENT_NAME = re.compile(
+    r"\b[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+"
+    r"(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+){2,7}\b"
+)
+_ANAPHORA = re.compile(
+    r"\b(?:tego dnia|datą obchodów|data obchodów|obchody tego dnia)\b",
+    re.IGNORECASE,
+)
+
+
+def _article_referents(text, claims):
+    """Resolve only an immediately preceding named event in one paragraph.
+
+    Do not reinterpret claims or use unrelated paragraphs as evidence.
+    Names affect retrieval/LLM disambiguation but never source citations.
+    """
+    references = {}
+    previous = None
+    for claim in claims:
+        if previous is not None and _ANAPHORA.search(claim.text):
+            first = text.find(previous.text)
+            second = text.find(claim.text, max(0, first))
+            if first >= 0 and second >= first + len(previous.text):
+                bridge = text[first + len(previous.text):second]
+                if len(bridge) < 40 and "\n\n" not in bridge:
+                    names = _EVENT_NAME.findall(previous.text)
+                    if names:
+                        references[claim.claim_id] = names[-1]
+        previous = claim
+    return references

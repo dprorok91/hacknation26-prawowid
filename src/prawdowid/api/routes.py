@@ -70,7 +70,7 @@ Service = Annotated[AnalysisService, Depends(analysis_service)]
 async def create_analysis(
     request: AnalysisRequest, response: Response, service: Service
 ) -> AnalysisResponse:
-    public_url = request.kind == "url" and "?" not in request.content and "#" not in request.content
+    public_url = request.kind == "url"
     return await _submit(request, response, service, public_model_allowed=public_url)
 
 

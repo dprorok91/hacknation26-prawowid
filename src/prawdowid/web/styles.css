@@ -319,3 +319,44 @@ a:hover { text-decoration-thickness: .14em; }
 @media (max-width: 35rem) {
   .coverage-stats { grid-template-columns: 1fr; }
 }
+
+/* Source provenance flags: publisher class and role are labels, never truth scores. */
+.source-flag {
+  display: inline-block;
+  margin: 0.15rem 0.4rem;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #64748b;
+  border-radius: 0.4rem;
+  font-size: 0.77rem;
+  font-weight: 650;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+.source-flag[data-category="official"] { border-color: #2563eb; }
+.source-flag[data-category="fact_check"] { border-color: #0f766e; }
+.source-flag[data-category="major_media"] { border-color: #b45309; }
+.source-flag[data-category="other_media"] { border-style: dashed; }
+.citation-reference { display: inline-flex; align-items: baseline; flex-wrap: wrap; }
+.category-coverage { list-style: none; padding-left: 0; }
+.category-coverage li { margin: 0.4rem 0; }
+
+/* V29: primary takeaway before diagnostic counters and source inventories. */
+.result-summary {
+  padding: 1.15rem 1.35rem;
+  margin-block: 1rem 1.5rem;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: .75rem;
+  background: var(--paper);
+}
+.result-summary h3 { margin-block-end: .9rem; }
+.summary-claim { display: grid; gap: .45rem; padding-block: .7rem; }
+.summary-claim + .summary-claim { border-block-start: 1px solid var(--border); }
+.summary-claim blockquote {
+  border-inline-start: 2px solid var(--border);
+  margin: .2rem 0;
+  padding-inline-start: .85rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.summary-claim a { color: var(--accent); font-weight: 650; }

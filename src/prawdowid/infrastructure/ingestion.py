@@ -1,10 +1,12 @@
 """Fetch eligible web articles before opening the write transaction."""
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlsplit
+from pathlib import PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,9 +26,11 @@ from prawdowid.infrastructure.corpus import (
 )
 from prawdowid.infrastructure.db_models import documents, jobs, passages, sources
 from prawdowid.infrastructure.job_queue import insert_job
-from prawdowid.infrastructure.safe_web import FetchError, SafeWeb, extract_article
+from prawdowid.infrastructure.pdf_text import pdf_text
+from prawdowid.infrastructure.safe_web import Article, FetchError, SafeWeb, extract_article
 
 FETCH_URL = "FETCH_URL"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -38,10 +42,11 @@ class IngestedArticle:
 
 
 async def enqueue_article(
-    session: AsyncSession, url: str, *, title: str = "", publisher: str = ""
+    session: AsyncSession, url: str, *, title: str = "", publisher: str = "",
+    force: bool = False, cache_revision: str = "",
 ) -> str:
     url = canonical_url(url)
-    dedupe_key = digest(url)
+    dedupe_key = digest(f"{cache_revision}:{url}" if cache_revision else url)
     previous = (
         await session.execute(
             sa.select(jobs.c.id, jobs.c.generation, jobs.c.state, jobs.c.updated_at)
@@ -52,8 +57,8 @@ async def enqueue_article(
     ).one_or_none()
     if previous is not None:
         cooldown = timedelta(hours=1) if previous.state == "completed" else timedelta(minutes=1)
-        if previous.state in ("queued", "leased") or previous.updated_at + cooldown > datetime.now(
-            UTC
+        if previous.state in ("queued", "leased") or (
+            not force and previous.updated_at + cooldown > datetime.now(UTC)
         ):
             return previous.id
     return await insert_job(
@@ -122,7 +127,10 @@ class CorpusAccess:
 
     async def article(self, url: str) -> IngestedArticle:
         async with self.sessions.begin() as session:
-            job = await enqueue_article(session, url)
+            # One-time URL refresh after the editorial HTML extraction upgrade.
+            # Reusing V18's completed FETCH_URL job would serve the old teaser
+            # body for up to an hour even though this deployment has a new parser.
+            job = await enqueue_article(session, url, cache_revision="url-parser-v20")
         async with asyncio.timeout(9):
             while True:
                 async with self.sessions() as session:
@@ -207,7 +215,20 @@ class ArticleIngestion:
         domain = urlsplit(page.url).hostname
         async with self.sessions() as session:
             policy = await approved_license(session, domain)
-        article = extract_article(page.content, allow_text=bool(policy), robots=page.robots)
+        if page.media_type == "application/pdf":
+            body = await pdf_text(page.content, robots=page.robots) if policy else None
+            title = unquote(PurePosixPath(urlsplit(page.url).path).name) or "Dokument PDF"
+            article = Article(title=title[:500], body=body)
+        else:
+            article = extract_article(
+                page.content, allow_text=bool(policy), robots=page.robots, source_url=page.url
+            )
+        if policy and not article.body:
+            logger.warning(
+                "Approved document extracted as metadata_only (host=%s, html_bytes=%d)",
+                domain,
+                len(page.content),
+            )
         title = article.title or lease.payload.get("title") or domain
         snapshot = ArticleSnapshot(
             page.url,

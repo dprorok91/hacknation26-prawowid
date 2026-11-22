@@ -20,6 +20,7 @@ WEB_HEADERS = {
     ),
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
 }
 
 

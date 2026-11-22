@@ -12,8 +12,8 @@ from prawdowid.worker import select_analysis_model
 @pytest.mark.parametrize(("kind", "content", "allowed", "canonical", "remote"), [
     ("text", "To jest prywatna wiadomość.", True, None, False),
     ("url", "https://example.org/article", False, None, False),
-    ("url", "https://example.org/article?user=42", True, None, False),
-    ("url", "https://example.org/article", True, "https://paper.org/article?user=42", False),
+    ("url", "https://example.org/article?user=42", True, "https://example.org/article?user=42", True),
+    ("url", "https://example.org/article", True, "https://paper.org/article?user=42", True),
     ("url", "https://example.org/article", True, "https://paper.org/article", True),
 ])
 async def test_analysis_routes_only_approved_public_articles(kind, content, allowed, canonical, remote):

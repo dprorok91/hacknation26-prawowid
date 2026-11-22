@@ -42,15 +42,6 @@ def canonical_url(value: str) -> str:
     query = [
         (key, item)
         for key, item in parse_qsl(parts.query, keep_blank_values=True, max_num_fields=100)
-        if not (key.lower().startswith("utm_") or key.lower() in TRACKING_NAMES)
+        if not (key.lower().startswith("utm_") or key.lower() == "utm" or key.lower() in TRACKING_NAMES)
     ]
     return urlunsplit((parts.scheme, netloc, parts.path or "/", urlencode(query), ""))
-
-
-def eligible_model_url(value: str) -> bool:
-    """Only plain HTTP article URLs may cross the hosted-model boundary after source approval."""
-    try:
-        parts = parse_http_url(value)
-        return parts.port in (None, 80, 443) and "?" not in value and "#" not in value
-    except ValueError:
-        return False

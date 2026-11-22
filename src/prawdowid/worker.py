@@ -14,13 +14,13 @@ from prawdowid.application.evidence import EvidenceService
 from prawdowid.application.pipeline import AnalysisPipeline
 from prawdowid.application.worker import JobFailure, JobWorker
 from prawdowid.config import get_settings
-from prawdowid.domain.urls import eligible_model_url
 from prawdowid.infrastructure.analysis_store import (
     ANALYZE,
     claim_analysis_input,
     finish_analysis,
     prune_expired,
 )
+from prawdowid.infrastructure.auto_index import INTERVAL_SECONDS, run_cycle
 from prawdowid.infrastructure.db import create_database
 from prawdowid.infrastructure.discovery import (
     DiscoveryService,
@@ -41,6 +41,7 @@ from prawdowid.infrastructure.factchecks import (
 )
 from prawdowid.infrastructure.ingestion import FETCH_URL, ArticleIngestion, CorpusAccess
 from prawdowid.infrastructure.job_queue import PostgresJobQueue
+from prawdowid.infrastructure.live_official import LiveOfficialEvidence
 from prawdowid.infrastructure.ollama import OllamaClient
 from prawdowid.infrastructure.openrouter import OpenRouterClient
 from prawdowid.infrastructure.retrieval import PostgresEvidenceRetriever
@@ -63,12 +64,11 @@ async def select_analysis_model(request, corpus, local_model, public_model, *, a
         public_model is None
         or request.kind != "url"
         or request.public_model_allowed is not True
-        or not eligible_model_url(request.content)
     ):
         return local_model, None
     # CorpusAccess checks current source approval, license, expiry and text availability.
     article = await corpus.article(request.content)
-    return (public_model if eligible_model_url(article.url) else local_model), article
+    return public_model, article
 
 
 async def mark_analysis_failed(session, lease, error_code):
@@ -146,6 +146,15 @@ async def run(once: bool) -> None:
                 more = await prune_expired(session)
                 await prune_discovery_cache(session)
             await asyncio.sleep(0.1 if more else 60)
+
+    async def auto_index(web):
+        while True:
+            try:
+                await run_cycle(database.sessions, web)
+            except (KeyError, OSError, RuntimeError, TypeError, ValueError, SQLAlchemyError) as exc:
+                # Index maintenance must not terminate the analysis/fetch worker.
+                logger.error("Automatic source indexing failed (%s)", type(exc).__name__)
+            await asyncio.sleep(INTERVAL_SECONDS)
 
     try:
         async with (
@@ -227,6 +236,7 @@ async def run(once: bool) -> None:
                 ),
                 corpus,
                 factchecks=FactCheckLookup(tuple(factcheck_providers)),
+                live_official=LiveOfficialEvidence(SafeWeb(web_client)),
             )
             analyses = PostgresJobQueue(
                 database.sessions, kinds=(ANALYZE,), on_dead=mark_analysis_failed
@@ -246,6 +256,7 @@ async def run(once: bool) -> None:
                 group.create_task(poll(analysis_worker))
                 group.create_task(poll(fetch_worker))
                 group.create_task(cleanup())
+                group.create_task(auto_index(SafeWeb(web_client)))
     finally:
         await database.dispose()
 

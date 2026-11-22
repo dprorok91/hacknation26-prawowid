@@ -1,0 +1,242 @@
+[
+  {
+    "url": "https://odyseusz.gov.pl/",
+    "title": "Odyseusz – system podróży",
+    "publisher": "MSZ",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://www.gov.pl/web/gov/ostrzezenia",
+    "title": "Ostrzeżenia Gov.pl",
+    "publisher": "Gov.pl",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://www.gov.pl/web/gov/ostrzezenia#/_/mazowieckie/wszystkie",
+    "title": "Ostrzeżenia – widok mazowiecki",
+    "publisher": "Gov.pl",
+    "mode": "client_route"
+  },
+  {
+    "url": "https://www.gov.pl/web/mswia/regionalny-system-ostrzegania",
+    "title": "Regionalny System Ostrzegania",
+    "publisher": "MSWiA",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/rcb/raport-dobowy3",
+    "title": "Raport dobowy RCB",
+    "publisher": "RCB",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/kgpsp/aktualnosci",
+    "title": "Aktualności PSP",
+    "publisher": "PSP",
+    "mode": "listing"
+  },
+  {
+    "url": "https://policja.pl/pol/aktualnosci",
+    "title": "Aktualności Policji",
+    "publisher": "Policja",
+    "mode": "listing"
+  },
+  {
+    "url": "https://mazowiecka.policja.gov.pl/ra/aktualnosci/aktualnosci",
+    "title": "Aktualności Policji mazowieckiej",
+    "publisher": "Policja Mazowiecka",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/obrona-narodowa/aktualnosci5",
+    "title": "Aktualności MON",
+    "publisher": "MON",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/gis/ostrzezenia",
+    "title": "Ostrzeżenia GIS",
+    "publisher": "GIS",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/paa/panstwowa-agencja-atomistyki",
+    "title": "Państwowa Agencja Atomistyki",
+    "publisher": "PAA",
+    "mode": "html"
+  },
+  {
+    "url": "https://monitoring.paa.gov.pl/",
+    "title": "Monitoring radiacyjny PAA",
+    "publisher": "PAA",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://powietrze.gios.gov.pl/pjp/",
+    "title": "Jakość powietrza GIOŚ",
+    "publisher": "GIOŚ",
+    "mode": "data_portal"
+  },
+  {
+    "url": "https://moje.cert.pl/komunikaty/",
+    "title": "Komunikaty CERT Polska",
+    "publisher": "CERT Polska",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/infrastruktura",
+    "title": "Ministerstwo Infrastruktury",
+    "publisher": "MI",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/infrastruktura/aktualnosci",
+    "title": "Aktualności MI",
+    "publisher": "MI",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/infrastruktura/prawa-pasazerow",
+    "title": "Prawa pasażerów MI",
+    "publisher": "MI",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/infrastruktura/infolinia-dla-obywatela",
+    "title": "Infolinia MI",
+    "publisher": "MI",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/infrastruktura/dane-kontaktowe",
+    "title": "Dane kontaktowe MI",
+    "publisher": "MI",
+    "mode": "html"
+  },
+  {
+    "url": "https://drogi.gddkia.gov.pl/informacje-drogowe",
+    "title": "Informacje drogowe GDDKiA",
+    "publisher": "GDDKiA",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://drogi.gddkia.gov.pl/mapy/mapa-informacji-drogowej",
+    "title": "Mapa informacji drogowej",
+    "publisher": "GDDKiA",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://drogi.gddkia.gov.pl/informacje-drogowe/lista-utrudnien",
+    "title": "Lista utrudnień GDDKiA",
+    "publisher": "GDDKiA",
+    "mode": "data_portal"
+  },
+  {
+    "url": "https://www.gov.pl/web/gddkia/informacja-drogowa---19-111",
+    "title": "Informacja drogowa 19 111",
+    "publisher": "GDDKiA",
+    "mode": "html"
+  },
+  {
+    "url": "https://ulc.gov.pl/",
+    "title": "Urząd Lotnictwa Cywilnego",
+    "publisher": "ULC",
+    "mode": "html"
+  },
+  {
+    "url": "https://ulc.gov.pl/prawa-pasazera",
+    "title": "Prawa pasażera ULC",
+    "publisher": "ULC",
+    "mode": "html"
+  },
+  {
+    "url": "https://ulc.gov.pl/prawa-pasazera/poradnik-dla-pasazerow",
+    "title": "Poradnik pasażera ULC",
+    "publisher": "ULC",
+    "mode": "listing"
+  },
+  {
+    "url": "https://portalpasazera.pl/",
+    "title": "Portal Pasażera",
+    "publisher": "PKP PLK",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://utk.gov.pl/pl/pasazerowie",
+    "title": "Pasażerowie UTK",
+    "publisher": "UTK",
+    "mode": "html"
+  },
+  {
+    "url": "https://kgsok.pl/",
+    "title": "Straż Ochrony Kolei",
+    "publisher": "SOK",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.sar.gov.pl/",
+    "title": "Morska Służba Poszukiwania i Ratownictwa",
+    "publisher": "SAR",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.umgdy.gov.pl/",
+    "title": "Urząd Morski w Gdyni",
+    "publisher": "UM Gdynia",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.ums.gov.pl/bezpieczenstwo-morskie/warunki-zeglugi",
+    "title": "Warunki żeglugi",
+    "publisher": "UM Szczecin",
+    "mode": "data_portal"
+  },
+  {
+    "url": "https://www.gov.pl/web/wody-polskie/komunikaty-nawigacyjne",
+    "title": "Komunikaty nawigacyjne",
+    "publisher": "Wody Polskie",
+    "mode": "listing"
+  },
+  {
+    "url": "https://meteo.imgw.pl/",
+    "title": "IMGW – meteo",
+    "publisher": "IMGW",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://hydro.imgw.pl/",
+    "title": "IMGW – hydro",
+    "publisher": "IMGW",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://baltyk.imgw.pl/",
+    "title": "IMGW – Bałtyk",
+    "publisher": "IMGW",
+    "mode": "interactive"
+  },
+  {
+    "url": "https://www.gov.pl/web/rcb/strona-glowna-rzadowego-centrum-bezpieczenstwa",
+    "title": "Strona RCB",
+    "publisher": "RCB",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/mswia",
+    "title": "Strona MSWiA",
+    "publisher": "MSWiA",
+    "mode": "html"
+  },
+  {
+    "url": "https://www.gov.pl/web/dyplomacja/informacje-dla-podrozujacych",
+    "title": "Informacje dla podróżujących",
+    "publisher": "MSZ",
+    "mode": "listing"
+  },
+  {
+    "url": "https://www.gov.pl/web/premier",
+    "title": "Strona KPRM",
+    "publisher": "KPRM",
+    "mode": "html"
+  }
+]

@@ -1,6 +1,7 @@
 """Checks for the dependency-free report UI's local assets and accessible entry form."""
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -25,8 +26,8 @@ def test_page_loads_only_local_owned_assets():
     page = BeautifulSoup((WEB_ROOT / "index.html").read_text(encoding="utf-8"), "html.parser")
     paths = [item["href"] for item in page.select("link[rel=stylesheet]")]
     paths.extend(item["src"] for item in page.select("script[src]"))
-    assert sorted(paths) == ["/assets/app.js", "/assets/styles.css"]
-    assert all((WEB_ROOT / Path(path).name).is_file() for path in paths)
+    assert sorted(paths) == ["/assets/app.js?v=20", "/assets/styles.css"]
+    assert all((WEB_ROOT / Path(urlsplit(path).path).name).is_file() for path in paths)
     assert not page.select("script:not([src])")
 
 

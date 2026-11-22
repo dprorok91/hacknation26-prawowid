@@ -70,6 +70,8 @@ class SourceReference(BaseModel):
     passage_id: str | None = None
     publisher: str
     source_type: Literal["news", "primary", "factcheck"] = "news"
+    source_category: Literal["official", "major_media", "fact_check", "other_media"] = "other_media"
+    source_role: Literal["core", "perspective"] = "perspective"
     title: str
     url: str
     published_at: datetime | None = None
@@ -122,6 +124,8 @@ class DiscoveredLink(BaseModel):
     provider: str
     published_at: datetime | None = None
     category: Literal["news", "fact_check"] = "news"
+    source_category: Literal["official", "major_media", "fact_check", "other_media"] = "other_media"
+    source_role: Literal["core", "perspective"] = "perspective"
     claim_ids: list[str] = Field(default_factory=list)
 
 
@@ -144,6 +148,8 @@ class DiscoveryStatus(BaseModel):
         "providers_partial", "completed",
     ] = "disabled"
     candidates_found: int = 0
+    live_attempted: int = 0
+    live_usable: int = 0
     provider_errors: list[DiscoveryProviderError] = Field(default_factory=list)
     per_claim: list[ClaimSearchStatus] = Field(default_factory=list)
     queries: list[dict[str, str]] = Field(default_factory=list)
@@ -161,9 +167,18 @@ class PriorFactCheck(BaseModel):
     reviewed_at: str | None = None
     provider: str
     match_status: Literal["not_assessed"] = "not_assessed"
+    source_category: Literal["fact_check"] = "fact_check"
+    source_role: Literal["core"] = "core"
 
 
 class Coverage(BaseModel):
+    input_chars: int = Field(default=0, ge=0)
+    input_segments: int = Field(default=0, ge=0)
+    extracted_claims: int = Field(default=0, ge=0)
+    cited_claims: int = Field(default=0, ge=0)
+    partial_analysis: bool = False
+    evidence_by_category: dict[str, list[str]] = Field(default_factory=dict)
+    evidence_categories_missing: list[str] = Field(default_factory=list)
     evidence_publishers: list[str] = Field(default_factory=list)
     fact_check_evidence_publishers: list[str] = Field(default_factory=list)
     topic_publishers: list[str] = Field(default_factory=list)

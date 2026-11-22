@@ -29,3 +29,18 @@ def augmented_tokens(tokens: list[str], text: str) -> list[str]:
     if aliases_for(text):
         return list(dict.fromkeys([*tokens, "sct", "strefa", "czystego", "transportu"]))
     return tokens
+
+
+def relevance_form(word: str) -> str:
+    """Small, auditable set of Polish forms used for passage relevance only.
+
+    This never expands the full-text query or establishes factual support.
+    """
+    word = word.casefold()
+    if word in {"dnia", "dzień", "dniu", "dniem"}:
+        return "dzień"
+    if word.startswith("zainicjow"):
+        return "zainicjow"
+    if word.startswith("obchod"):
+        return "obchod"
+    return word

@@ -38,7 +38,7 @@ from prawdowid.infrastructure.ingestion import enqueue_article
 from prawdowid.infrastructure.job_queue import insert_job
 from prawdowid.infrastructure.reports import evidence_rows, save_report
 
-PIPELINE_VERSION = "v1"
+PIPELINE_VERSION = "v20"
 ANALYZE = "ANALYZE"
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 PHONE = re.compile(r"(?<!\w)(?:\+48[ -]?)?\d{3}[ -]\d{3}[ -]\d{3}(?!\w)")

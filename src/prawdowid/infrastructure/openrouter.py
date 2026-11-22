@@ -1,5 +1,6 @@
 """OpenRouter adapter for approved public evidence tasks."""
 
+import logging
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from prawdowid.infrastructure.model_transport import (
 )
 
 _COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
+logger = logging.getLogger(__name__)
 
 
 def _strict_schema(node: dict[str, Any]) -> dict[str, Any]:
@@ -72,7 +74,7 @@ class OpenRouterClient(StructuredModelTransport):
             },
             "provider": {"require_parameters": True},
             "temperature": 0,
-            "max_tokens": 1536,
+            "max_tokens": 2048,
             "stream": False,
             "usage": {"include": True},
         }
@@ -87,17 +89,30 @@ class OpenRouterClient(StructuredModelTransport):
                 counts = envelope["usage"]
             if "error" in envelope:
                 error = envelope["error"]
-                raise _provider_failure(error.get("code") if isinstance(error, dict) else None)
+                code = error.get("code") if isinstance(error, dict) else None
+                # Only bounded numeric identifiers; never log provider messages.
+                logger.warning(
+                    "OpenRouter provider error: status=%s",
+                    code if isinstance(code, int) else "unknown",
+                )
+                raise _provider_failure(code)
             choices = envelope.get("choices")
             if not isinstance(choices, list) or len(choices) != 1:
+                logger.warning("OpenRouter invalid response: missing_choice")
                 raise ValueError("Missing model choice.")
             choice = choices[0]
             if not isinstance(choice, dict) or choice.get("finish_reason") != "stop":
+                reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+                # Never log untrusted provider text or unknown finish reasons.
+                label = reason if reason in {"length", "content_filter", "tool_calls"} else "other"
+                logger.warning("OpenRouter incomplete response: %s", label)
                 raise ValueError("Incomplete model choice.")
             return assistant_json(choice.get("message"))
         except httpx.HTTPStatusError as exc:
+            logger.warning("OpenRouter HTTP error: status=%d", exc.response.status_code)
             raise _provider_failure(exc.response.status_code) from None
-        except (ValueError, TypeError, RecursionError, httpx.HTTPError):
+        except (ValueError, TypeError, RecursionError, httpx.HTTPError) as exc:
+            logger.warning("OpenRouter invalid response or transport: %s", type(exc).__name__)
             raise _provider_failure(None) from None
         finally:
             usage = self._usage.get()

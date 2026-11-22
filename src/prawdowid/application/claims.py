@@ -31,3 +31,16 @@ def sentence_spans(text: str) -> list[tuple[str, int, int]]:
         offset = start + len(trailing) - len(trailing.lstrip())
         spans.append((stripped, offset, offset + len(stripped)))
     return spans[:5]
+
+
+def candidate_spans(text: str) -> list[str]:
+    """Bounded exact sentence/list spans for under-extraction detection.
+
+    These are *candidates*, never assumed to be true or factual. Each candidate
+    must independently pass semantic classification before public retrieval.
+    """
+    chunks = re.split(r"(?<=[.!?])\s+|\n+", text)
+    return list(dict.fromkeys(
+        chunk.strip() for chunk in chunks
+        if 12 <= len(chunk.strip()) <= 400
+    ))[:80]

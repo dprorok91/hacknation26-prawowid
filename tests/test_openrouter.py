@@ -168,7 +168,7 @@ async def test_openrouter_rejects_invented_citation_under_existing_evidence_rule
     assert result.verdict == Verdict.INSUFFICIENT_EVIDENCE
 
 
-async def test_hosted_verification_filters_secondary_sources_with_private_query():
+async def test_hosted_verification_uses_all_approved_passages_independent_of_url_query():
     private = EvidencePassage(
         "p0", "d0", "private sentinel", "Gov", "Restricted", "https://gov.pl/doc?user=1", None
     )
@@ -178,7 +178,7 @@ async def test_hosted_verification_filters_secondary_sources_with_private_query(
     sent = []
 
     def reply(request):
-        assert b"private sentinel" not in request.content
+        assert b"gov.pl/doc?user=1" not in request.content
         payload = json.loads(json.loads(request.content)["messages"][1]["content"])
         sent.extend(row["passage_id"] for row in payload["passages"])
         return httpx.Response(200, json=completion('{"citations":[]}'))
@@ -187,4 +187,22 @@ async def test_hosted_verification_filters_secondary_sources_with_private_query(
         model = OpenRouterClient(client, KEY, MODEL)
         claim = Claim("c1", "Opublikowano raport.", "verifiable", "public")
         await EvidenceService(model, public_sources_only=True).verify(claim, [private, public])
-    assert sent == ["p1"]
+    assert sent == ["p0", "p1"]
+
+async def test_incomplete_openrouter_response_is_logged_without_payload(caplog):
+    def truncated(request):
+        return httpx.Response(200, json={
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"content": "private-sentinel-payload"},
+            }],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(truncated)) as client:
+        with pytest.raises(AnalysisError) as failure:
+            await OpenRouterClient(client, KEY, MODEL).complete_json(
+                schema={"type": "object"}, prompt="private-sentinel-prompt"
+            )
+    assert failure.value.code is ErrorCode.MODEL_UNAVAILABLE
+    assert "length" in caplog.text
+    assert "private-sentinel" not in caplog.text

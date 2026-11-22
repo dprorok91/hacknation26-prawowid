@@ -12,7 +12,6 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 import httpx
 from bs4 import BeautifulSoup
 
-
 TRACKING_PARAMETERS = {
     "ceid",
     "fbclid",
